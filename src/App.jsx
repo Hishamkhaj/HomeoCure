@@ -5,6 +5,7 @@ import PatientList from "./components/PatientList";
 import AddPatient from "./components/AddPatient";
 import PatientDetail from "./components/PatientDetail";
 import AboutModal from "./components/AboutModal";
+import PharmacyView from "./components/PharmacyView";
 import { LogOut, Leaf } from "lucide-react";
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [tab, setTab] = useState("patients");
 
   useEffect(() => {
     if (unlocked) fetchPatients();
@@ -94,7 +96,7 @@ export default function App() {
       style={{ background: "linear-gradient(180deg, #F4FAF8 0%, #EAF6F2 100%)", fontFamily: "system-ui, sans-serif" }}
     >
       <div className="max-w-sm mx-auto">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <button onClick={() => setShowAbout(true)} className="flex items-center gap-2.5">
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center"
@@ -124,24 +126,53 @@ export default function App() {
           </button>
         </div>
 
-        {selected ? (
-          <PatientDetail
-            patient={selected}
-            onBack={() => setSelected(null)}
-            onAddVisit={handleAddVisit}
-            onToggleStatus={handleToggleStatus}
-          />
-        ) : loadingPatients ? (
-          <p className="text-sm text-center py-10" style={{ color: "#0A5C5499" }}>
-            Loading patients…
-          </p>
-        ) : (
-          <PatientList patients={patients} onSelect={setSelected} onAddNew={() => setShowAdd(true)} />
-        )}
+        <div className="flex gap-2 mb-5 bg-white/60 rounded-xl p-1">
+          <button
+            onClick={() => {
+              setTab("patients");
+              setSelected(null);
+            }}
+            className="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+            style={{
+              background: tab === "patients" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
+              color: tab === "patients" ? "white" : "#0A5C54",
+            }}
+          >
+            Patients
+          </button>
+          <button
+            onClick={() => setTab("pharmacy")}
+            className="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+            style={{
+              background: tab === "pharmacy" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
+              color: tab === "pharmacy" ? "white" : "#0A5C54",
+            }}
+          >
+            Pharmacy
+          </button>
+        </div>
+
+        {tab === "patients" &&
+          (selected ? (
+            <PatientDetail
+              patient={selected}
+              onBack={() => setSelected(null)}
+              onAddVisit={handleAddVisit}
+              onToggleStatus={handleToggleStatus}
+            />
+          ) : loadingPatients ? (
+            <p className="text-sm text-center py-10" style={{ color: "#0A5C5499" }}>
+              Loading patients…
+            </p>
+          ) : (
+            <PatientList patients={patients} onSelect={setSelected} onAddNew={() => setShowAdd(true)} />
+          ))}
+
+        {tab === "pharmacy" && <PharmacyView />}
       </div>
 
       {showAdd && <AddPatient onClose={() => setShowAdd(false)} onSave={handleAddPatient} />}
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
-}
+           }
