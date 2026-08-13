@@ -231,7 +231,7 @@ export default function PharmacyView() {
               {searching ? " found" : ""}
             </p>
             {!searching && (
-              <button
+          <button
                 onClick={() => setShowAddProduct(true)}
                 className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white"
                 style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
@@ -410,4 +410,52 @@ export default function PharmacyView() {
             <form onSubmit={saveEditProduct} className="space-y-4">
               <div>
                 <label className={labelClass} style={labelStyle}>Product name</label>
-                <input required value={p
+                <input required value={productForm.name} onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))} className={inputClass} style={inputStyle} />
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Quantity / size</label>
+                <input value={productForm.unit_label} onChange={(e) => setProductForm((f) => ({ ...f, unit_label: e.target.value }))} className={inputClass} style={inputStyle} />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className={labelClass} style={labelStyle}>Price (₹)</label>
+                  <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
+                </div>
+                <div className="flex-1">
+                  <label className={labelClass} style={labelStyle}>Current stock</label>
+                  <input type="number" value={productForm.stock} onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))} className={inputClass} style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Alert when stock is at or below</label>
+                <input type="number" value={productForm.low_stock_threshold} onChange={(e) => setProductForm((f) => ({ ...f, low_stock_threshold: e.target.value }))} className={inputClass} style={inputStyle} />
+              </div>
+              <button type="submit" className="w-full py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
+                Save changes
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteProduct && (
+        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmDeleteProduct(null)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Delete product?</h3>
+            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>
+              This will permanently delete <strong>{confirmDeleteProduct.name}</strong>. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteProduct(null)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>
+                Cancel
+              </button>
+              <button onClick={() => deleteProduct(confirmDeleteProduct)} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: "#DC2626" }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+                      }
