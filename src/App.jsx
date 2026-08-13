@@ -4,6 +4,7 @@ import Login from "./Login";
 import PatientList from "./components/PatientList";
 import AddPatient from "./components/AddPatient";
 import PatientDetail from "./components/PatientDetail";
+import AboutModal from "./components/AboutModal";
 import { LogOut, Leaf } from "lucide-react";
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -115,14 +117,14 @@ export default function App() {
     >
       <div className="max-w-sm mx-auto">
         <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-2.5">
+          <button onClick={() => setShowAbout(true)} className="flex items-center gap-2.5">
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
             >
               <Leaf size={18} color="white" />
             </div>
-            <div>
+            <div className="text-left">
               <h1 className="text-lg font-bold font-serif leading-tight" style={{ color: "#0A5C54" }}>
                 HomeoCure
               </h1>
@@ -130,7 +132,7 @@ export default function App() {
                 We serve, He cures
               </p>
             </div>
-          </div>
+          </button>
           <button
             onClick={() => supabase.auth.signOut()}
             className="w-9 h-9 rounded-full flex items-center justify-center bg-white/70 shadow-sm"
@@ -158,6 +160,7 @@ export default function App() {
       </div>
 
       {showAdd && <AddPatient onClose={() => setShowAdd(false)} onSave={handleAddPatient} />}
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
-      }
+}
