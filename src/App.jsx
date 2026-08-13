@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
-import Login from "./Login";
+import PinLock from "./components/PinLock";
 import PatientList from "./components/PatientList";
 import AddPatient from "./components/AddPatient";
 import PatientDetail from "./components/PatientDetail";
@@ -8,8 +8,7 @@ import AboutModal from "./components/AboutModal";
 import { LogOut, Leaf } from "lucide-react";
 
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [loadingSession, setLoadingSession] = useState(true);
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("homeocure-unlocked") === "true");
   const [patients, setPatients] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -17,19 +16,8 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoadingSession(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (session) fetchPatients();
-  }, [session]);
+    if (unlocked) fetchPatients();
+  }, [unlocked]);
 
   async function fetchPatients() {
     setLoadingPatients(true);
@@ -98,17 +86,7 @@ export default function App() {
     }
   }
 
-  if (loadingSession) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F4FAF8" }}>
-        <p className="text-sm" style={{ color: "#0A5C54" }}>
-          Loading…
-        </p>
-      </div>
-    );
-  }
-
-  if (!session) return <Login />;
+  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />;
 
   return (
     <div
@@ -134,10 +112,13 @@ export default function App() {
             </div>
           </button>
           <button
-            onClick={() => supabase.auth.signOut()}
+            onClick={() => {
+              sessionStorage.removeItem("homeocure-unlocked");
+              setUnlocked(false);
+            }}
             className="w-9 h-9 rounded-full flex items-center justify-center bg-white/70 shadow-sm"
             style={{ color: "#0A5C54" }}
-            aria-label="Sign out"
+            aria-label="Lock"
           >
             <LogOut size={16} />
           </button>
