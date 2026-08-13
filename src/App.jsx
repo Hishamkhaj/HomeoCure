@@ -6,6 +6,7 @@ import AddPatient from "./components/AddPatient";
 import PatientDetail from "./components/PatientDetail";
 import AboutModal from "./components/AboutModal";
 import PharmacyView from "./components/PharmacyView";
+import FollowUpView from "./components/FollowUpView";
 import { LogOut, Leaf } from "lucide-react";
 
 export default function App() {
@@ -88,7 +89,37 @@ export default function App() {
     }
   }
 
+  async function handleEditPatient(id, form) {
+    const { error } = await supabase.from("patients").update({ name: form.name, contact: form.contact }).eq("id", id);
+    if (!error) {
+      setPatients((prev) => prev.map((p) => (p.id === id ? { ...p, ...form } : p)));
+    }
+  }
+
+  async function handleDeletePatient(id) {
+    const { error } = await supabase.from("patients").delete().eq("id", id);
+    if (!error) {
+      setPatients((prev) => prev.filter((p) => p.id !== id));
+      if (selected?.id === id) setSelected(null);
+    }
+  }
+
+  function goToPatientFromFollowUp(p) {
+    setTab("patients");
+    setSelected(p);
+  }
+
   if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />;
+
+  const overdueCount = patients.filter((p) => {
+    if (p.status !== "open") return false;
+    const visits = p.visits || [];
+    if (visits.length === 0) return false;
+    const last = [...visits].sort((a, b) => b.ts - a.ts)[0];
+    if (!last.duration_days) return false;
+    const dueDate = last.ts + last.duration_days * 24 * 60 * 60 * 1000;
+    return Date.now() >= dueDate;
+  }).length;
 
   return (
     <div
@@ -126,13 +157,13 @@ export default function App() {
           </button>
         </div>
 
-        <div className="flex gap-2 mb-5 bg-white/60 rounded-xl p-1">
+        <div className="flex gap-1.5 mb-5 bg-white/60 rounded-xl p-1">
           <button
             onClick={() => {
               setTab("patients");
               setSelected(null);
             }}
-            className="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
             style={{
               background: tab === "patients" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
               color: tab === "patients" ? "white" : "#0A5C54",
@@ -141,8 +172,26 @@ export default function App() {
             Patients
           </button>
           <button
+            onClick={() => setTab("followup")}
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition relative"
+            style={{
+              background: tab === "followup" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
+              color: tab === "followup" ? "white" : "#0A5C54",
+            }}
+          >
+            Follow-up
+            {overdueCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center text-white font-bold"
+                style={{ background: "#DC2626" }}
+              >
+                {overdueCount}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setTab("pharmacy")}
-            className="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
             style={{
               background: tab === "pharmacy" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
               color: tab === "pharmacy" ? "white" : "#0A5C54",
@@ -165,8 +214,16 @@ export default function App() {
               Loading patients…
             </p>
           ) : (
-            <PatientList patients={patients} onSelect={setSelected} onAddNew={() => setShowAdd(true)} />
+            <PatientList
+              patients={patients}
+              onSelect={setSelected}
+              onAddNew={() => setShowAdd(true)}
+              onEdit={handleEditPatient}
+              onDelete={handleDeletePatient}
+            />
           ))}
+
+        {tab === "followup" && <FollowUpView patients={patients} onSelect={goToPatientFromFollowUp} />}
 
         {tab === "pharmacy" && <PharmacyView />}
       </div>
@@ -175,4 +232,4 @@ export default function App() {
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
-           }
+      }
