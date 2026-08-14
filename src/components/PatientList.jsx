@@ -26,6 +26,9 @@ export default function PatientList({ patients, onSelect, onAddNew, onEdit, onDe
     setEditing(null);
   };
 
+  const dueFor = (p) =>
+    (p.visits || []).reduce((sum, v) => sum + Math.max(0, (v.cost || 0) - (v.paid_amount ?? v.cost ?? 0)), 0);
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
@@ -83,6 +86,11 @@ export default function PatientList({ patients, onSelect, onAddNew, onEdit, onDe
                   {p.status === "open" ? "Open" : "Closed"}
                 </span>
               </div>
+              {dueFor(p) > 0 && (
+                <span className="text-[10px] font-semibold text-red-600 shrink-0 mr-1">
+                  ₹{dueFor(p)} due
+                </span>
+              )}
             </button>
             <button onClick={(e) => openEdit(p, e)} className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ color: "#148A7A" }}>
               <Pencil size={14} />
@@ -176,4 +184,4 @@ export default function PatientList({ patients, onSelect, onAddNew, onEdit, onDe
       )}
     </div>
   );
-}
+                                               }
