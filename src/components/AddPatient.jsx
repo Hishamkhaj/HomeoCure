@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X } from "lucide-react";
+import MedicineSelector from "./MedicineSelector";
 
 const inputClass =
   "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
@@ -7,17 +8,25 @@ const inputStyle = { borderColor: "#14B8A655" };
 const labelClass = "text-xs font-medium block mb-1.5";
 const labelStyle = { color: "#0A5C54" };
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function AddPatient({ onClose, onSave }) {
   const [form, setForm] = useState({
     name: "",
     contact: "",
+    date: todayStr(),
     complaint: "",
-    medicine: "",
+    medicineNote: "",
     duration_days: "",
     cost: "",
+    paid_amount: "",
     payment_mode: "cash",
     mr_commission: "",
   });
+  const [medicines, setMedicines] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -25,7 +34,7 @@ export default function AddPatient({ onClose, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    await onSave(form);
+    await onSave({ ...form, medicines });
     setSaving(false);
   };
 
@@ -36,7 +45,7 @@ export default function AddPatient({ onClose, onSave }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold font-serif" style={{ color: "#0A5C54" }}>
+          <h3 className="text-lg font-bold" style={{ color: "#0A5C54" }}>
             New Patient
           </h3>
           <button onClick={onClose} style={{ color: "#0A5C54" }}>
@@ -57,12 +66,20 @@ export default function AddPatient({ onClose, onSave }) {
             <p className="text-xs font-semibold mb-3" style={{ color: "#148A7A" }}>First visit details</p>
           </div>
           <div>
+            <label className={labelClass} style={labelStyle}>Visit date</label>
+            <input type="date" required value={form.date} onChange={update("date")} className={inputClass} style={inputStyle} />
+          </div>
+          <div>
             <label className={labelClass} style={labelStyle}>Complaint / diagnosis</label>
             <input required value={form.complaint} onChange={update("complaint")} className={inputClass} style={inputStyle} />
           </div>
           <div>
-            <label className={labelClass} style={labelStyle}>Medicine given</label>
-            <input value={form.medicine} onChange={update("medicine")} className={inputClass} style={inputStyle} />
+            <label className={labelClass} style={labelStyle}>Medicines given</label>
+            <MedicineSelector value={medicines} onChange={setMedicines} />
+          </div>
+          <div>
+            <label className={labelClass} style={labelStyle}>Notes (optional, e.g. dosage instructions)</label>
+            <input value={form.medicineNote} onChange={update("medicineNote")} className={inputClass} style={inputStyle} />
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
@@ -70,9 +87,13 @@ export default function AddPatient({ onClose, onSave }) {
               <input type="number" value={form.duration_days} onChange={update("duration_days")} className={inputClass} style={inputStyle} />
             </div>
             <div className="flex-1">
-              <label className={labelClass} style={labelStyle}>Cost (₹)</label>
+              <label className={labelClass} style={labelStyle}>Total cost (₹)</label>
               <input type="number" value={form.cost} onChange={update("cost")} className={inputClass} style={inputStyle} />
             </div>
+          </div>
+          <div>
+            <label className={labelClass} style={labelStyle}>Amount paid (₹) — leave blank if paid in full</label>
+            <input type="number" value={form.paid_amount} onChange={update("paid_amount")} placeholder={form.cost || "0"} className={inputClass} style={inputStyle} />
           </div>
           <div>
             <label className={labelClass} style={labelStyle}>Payment mode</label>
@@ -99,4 +120,4 @@ export default function AddPatient({ onClose, onSave }) {
       </div>
     </div>
   );
-          }
+            }
