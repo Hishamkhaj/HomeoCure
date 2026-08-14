@@ -39,9 +39,13 @@ export default function App() {
   async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
     if (!medicines || medicines.length === 0) return;
     for (const m of medicines) {
-      const { data: prod } = await supabase.from("pharmacy_products").select("stock").eq("id", m.product_id).single();
-      if (prod) {
-        const newStock = Math.max(0, prod.stock - m.qty);
+      const { data: prodRows, error: fetchErr } = await supabase
+        .from("pharmacy_products")
+        .select("id, stock")
+        .eq("id", m.product_id);
+      if (!fetchErr && prodRows && prodRows.length > 0) {
+        const currentStock = prodRows[0].stock;
+        const newStock = Math.max(0, currentStock - m.qty);
         await supabase.from("pharmacy_products").update({ stock: newStock }).eq("id", m.product_id);
       }
       await supabase.from("pharmacy_sales").insert({
@@ -273,4 +277,4 @@ export default function App() {
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
-                                             }
+            }
