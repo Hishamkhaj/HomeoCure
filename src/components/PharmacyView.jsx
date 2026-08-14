@@ -128,7 +128,10 @@ export default function PharmacyView() {
     if (product.stock <= 0) return;
     const newStock = product.stock - 1;
     const { error } = await supabase.from("pharmacy_products").update({ stock: newStock }).eq("id", product.id);
-    if (!error) setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, stock: newStock } : p)));
+    if (!error) {
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, stock: newStock } : p)));
+      await supabase.from("pharmacy_sales").insert({ product_id: product.id, product_name: product.name, qty: 1 });
+    }
   }
 
   async function addStock(product) {
@@ -231,7 +234,7 @@ export default function PharmacyView() {
               {searching ? " found" : ""}
             </p>
             {!searching && (
-          <button
+              <button
                 onClick={() => setShowAddProduct(true)}
                 className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white"
                 style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
@@ -303,7 +306,7 @@ export default function PharmacyView() {
                 {searching ? "No matching products." : "No products in this category yet."}
               </p>
             )}
-          </div>
+            </div>
         </>
       )}
 
@@ -458,4 +461,4 @@ export default function PharmacyView() {
       )}
     </div>
   );
-                      }
+            }
