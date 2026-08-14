@@ -9,6 +9,10 @@ import PharmacyView from "./components/PharmacyView";
 import FollowUpView from "./components/FollowUpView";
 import { LogOut, Leaf } from "lucide-react";
 
+function dateStrToTs(dateStr) {
+  return new Date(dateStr + "T12:00:00").getTime();
+}
+
 export default function App() {
   const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("homeocure-unlocked") === "true");
   const [patients, setPatients] = useState([]);
@@ -32,39 +36,75 @@ export default function App() {
     setLoadingPatients(false);
   }
 
-  async function handleAddPatient(form) {
-    const firstVisit = {
-      ts: Date.now(),
+  async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
+    if (!medicines || medicines.length === 0) return;
+    for (const m of medicines) {
+      const { data: prod } = await supabase.from("pharmacy_products").select("stock").eq("id", m.product_id).single();
+      if (prod) {
+        const newStock = Math.max(0, prod.stock - m.qty);
+        await supabase.from("pharmacy_products").update({ stock: newStock }).eq("id", m.product_id);
+      }
+      await supabase.from("pharmacy_sales").insert({
+        product_id: m.product_id,
+        product_name: m.name,
+        patient_id: patientId,
+        qty: m.qty,
+        sold_at: soldAtDateStr,
+      });
+    }
+  }
+
+  function buildVisit(form) {
+    return {
+      ts: dateStrToTs(form.date),
       complaint: form.complaint,
-      medicine: form.medicine,
+      medicines: form.medicines || [],
+      medicineNote: form.medicineNote || "",
       duration_days: form.duration_days ? Number(form.duration_days) : null,
       cost: form.cost ? Number(form.cost) : 0,
+      paid_amount: form.paid_amount !== "" && form.paid_amount != null ? Number(form.paid_amount) : (form.cost ? Number(form.cost) : 0),
       payment_mode: form.payment_mode,
       mr_commission: form.mr_commission ? Number(form.mr_commission) : 0,
     };
-    const { error } = await supabase.from("patients").insert({
-      name: form.name,
-      contact: form.contact,
-      status: "open",
-      visits: [firstVisit],
-    });
+  }
+
+  async function handleAddPatient(form) {
+    const firstVisit = buildVisit(form);
+    const { data, error } = await supabase
+      .from("patients")
+      .insert({
+        name: form.name,
+        contact: form.contact,
+        status: "open",
+        visits: [firstVisit],
+      })
+      .select()
+      .single();
     if (!error) {
+      await syncPharmacyForMedicines(firstVisit.medicines, data.id, form.date);
       setShowAdd(false);
       fetchPatients();
     }
   }
 
   async function handleAddVisit(form) {
-    const newVisit = {
-      ts: Date.now(),
-      complaint: form.complaint,
-      medicine: form.medicine,
-      duration_days: form.duration_days ? Number(form.duration_days) : null,
-      cost: form.cost ? Number(form.cost) : 0,
-      payment_mode: form.payment_mode,
-      mr_commission: form.mr_commission ? Number(form.mr_commission) : 0,
-    };
+    const newVisit = buildVisit(form);
     const updatedVisits = [...(selected.visits || []), newVisit];
+    const { error } = await supabase
+      .from("patients")
+      .update({ visits: updatedVisits })
+      .eq("id", selected.id);
+    if (!error) {
+      await syncPharmacyForMedicines(newVisit.medicines, selected.id, form.date);
+      const updated = { ...selected, visits: updatedVisits };
+      setSelected(updated);
+      setPatients((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    }
+  }
+
+  async function handleEditVisit(originalTs, form) {
+    const updatedVisit = buildVisit(form);
+    const updatedVisits = (selected.visits || []).map((v) => (v.ts === originalTs ? updatedVisit : v));
     const { error } = await supabase
       .from("patients")
       .update({ visits: updatedVisits })
@@ -207,6 +247,7 @@ export default function App() {
               patient={selected}
               onBack={() => setSelected(null)}
               onAddVisit={handleAddVisit}
+              onEditVisit={handleEditVisit}
               onToggleStatus={handleToggleStatus}
             />
           ) : loadingPatients ? (
@@ -232,4 +273,4 @@ export default function App() {
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
-      }
+                                             }
