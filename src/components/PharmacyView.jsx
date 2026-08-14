@@ -1,11 +1,23 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Plus, X, AlertTriangle, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, X, AlertTriangle, Pencil, Trash2, Search, RotateCcw, Droplet, EyeOff } from "lucide-react";
 
 const inputClass = "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
 const inputStyle = { borderColor: "#14B8A655" };
 const labelClass = "text-xs font-medium block mb-1.5";
 const labelStyle = { color: "#0A5C54" };
+
+const emptyProductForm = {
+  name: "",
+  price: "",
+  unit_label: "",
+  stock: "",
+  low_stock_threshold: "2",
+  tracking_type: "unit",
+  measure_unit: "ml",
+  bottle_size_ml: "",
+  low_volume_threshold_ml: "50",
+};
 
 export default function PharmacyView() {
   const [categories, setCategories] = useState([]);
@@ -18,11 +30,15 @@ export default function PharmacyView() {
   const [editCategory, setEditCategory] = useState(null);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryVisible, setNewCategoryVisible] = useState(true);
 
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [confirmDeleteProduct, setConfirmDeleteProduct] = useState(null);
-  const [productForm, setProductForm] = useState({ name: "", price: "", unit_label: "", stock: "", low_stock_threshold: "2" });
+  const [productForm, setProductForm] = useState(emptyProductForm);
+
+  const [dispenseDrafts, setDispenseDrafts] = useState({});
+  const [confirmRefill, setConfirmRefill] = useState(null);
 
   useEffect(() => {
     fetchAll();
@@ -41,20 +57,28 @@ export default function PharmacyView() {
   async function addCategory(e) {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
-    const { data, error } = await supabase.from("pharmacy_categories").insert({ name: newCategoryName.trim() }).select().single();
+    const { data, error } = await supabase
+      .from("pharmacy_categories")
+      .insert({ name: newCategoryName.trim(), patient_visible: newCategoryVisible })
+      .select()
+      .single();
     if (!error) {
       setCategories((prev) => [...prev, data]);
       setActiveCategory(data.id);
       setNewCategoryName("");
+      setNewCategoryVisible(true);
       setShowAddCategory(false);
     }
   }
 
   async function saveEditCategory(e) {
     e.preventDefault();
-    const { error } = await supabase.from("pharmacy_categories").update({ name: editCategory.name }).eq("id", editCategory.id);
+    const { error } = await supabase
+      .from("pharmacy_categories")
+      .update({ name: editCategory.name, patient_visible: editCategory.patient_visible })
+      .eq("id", editCategory.id);
     if (!error) {
-      setCategories((prev) => prev.map((c) => (c.id === editCategory.id ? { ...c, name: editCategory.name } : c)));
+      setCategories((prev) => prev.map((c) => (c.id === editCategory.id ? { ...c, ...editCategory } : c)));
       setEditCategory(null);
     }
   }
@@ -70,23 +94,29 @@ export default function PharmacyView() {
     setConfirmDeleteCategory(null);
   }
 
+  function buildProductPayload() {
+    const isVolume = productForm.tracking_type === "volume";
+    return {
+      name: productForm.name,
+      price: Number(productForm.price) || 0,
+      unit_label: productForm.unit_label,
+      stock: isVolume ? 0 : Number(productForm.stock) || 0,
+      low_stock_threshold: Number(productForm.low_stock_threshold) || 2,
+      tracking_type: productForm.tracking_type,
+      measure_unit: isVolume ? productForm.measure_unit : null,
+      bottle_size_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
+      remaining_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
+      low_volume_threshold_ml: isVolume ? Number(productForm.low_volume_threshold_ml) || 50 : null,
+    };
+  }
+
   async function addProduct(e) {
     e.preventDefault();
-    const { data, error } = await supabase
-      .from("pharmacy_products")
-      .insert({
-        category_id: activeCategory,
-        name: productForm.name,
-        price: Number(productForm.price) || 0,
-        unit_label: productForm.unit_label,
-        stock: Number(productForm.stock) || 0,
-        low_stock_threshold: Number(productForm.low_stock_threshold) || 2,
-      })
-      .select()
-      .single();
+    const payload = { ...buildProductPayload(), category_id: activeCategory };
+    const { data, error } = await supabase.from("pharmacy_products").insert(payload).select().single();
     if (!error) {
       setProducts((prev) => [...prev, data]);
-      setProductForm({ name: "", price: "", unit_label: "", stock: "", low_stock_threshold: "2" });
+      setProductForm(emptyProductForm);
       setShowAddProduct(false);
     }
   }
@@ -99,17 +129,27 @@ export default function PharmacyView() {
       unit_label: p.unit_label || "",
       stock: String(p.stock),
       low_stock_threshold: String(p.low_stock_threshold ?? 2),
+      tracking_type: p.tracking_type || "unit",
+      measure_unit: p.measure_unit || "ml",
+      bottle_size_ml: String(p.bottle_size_ml ?? ""),
+      low_volume_threshold_ml: String(p.low_volume_threshold_ml ?? 50),
     });
   }
 
   async function saveEditProduct(e) {
     e.preventDefault();
+    const isVolume = productForm.tracking_type === "volume";
     const updates = {
       name: productForm.name,
       price: Number(productForm.price) || 0,
       unit_label: productForm.unit_label,
-      stock: Number(productForm.stock) || 0,
+      stock: isVolume ? editProduct.stock : Number(productForm.stock) || 0,
       low_stock_threshold: Number(productForm.low_stock_threshold) || 2,
+      tracking_type: productForm.tracking_type,
+      measure_unit: isVolume ? productForm.measure_unit : null,
+      bottle_size_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
+      remaining_ml: isVolume ? (editProduct.remaining_ml ?? Number(productForm.bottle_size_ml) || 0) : null,
+      low_volume_threshold_ml: isVolume ? Number(productForm.low_volume_threshold_ml) || 50 : null,
     };
     const { error } = await supabase.from("pharmacy_products").update(updates).eq("id", editProduct.id);
     if (!error) {
@@ -140,11 +180,34 @@ export default function PharmacyView() {
     if (!error) setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, stock: newStock } : p)));
   }
 
+  async function dispenseMl(product) {
+    const amt = Number(dispenseDrafts[product.id]);
+    if (!amt || amt <= 0) return;
+    const newRemaining = Math.max(0, (product.remaining_ml || 0) - amt);
+    const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: newRemaining }).eq("id", product.id);
+    if (!error) {
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: newRemaining } : p)));
+      await supabase.from("pharmacy_sales").insert({ product_id: product.id, product_name: product.name, ml_dispensed: amt });
+      setDispenseDrafts((d) => ({ ...d, [product.id]: "" }));
+    }
+  }
+
+  async function refillProduct(product) {
+    const full = product.bottle_size_ml || 0;
+    const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: full }).eq("id", product.id);
+    if (!error) setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: full } : p)));
+    setConfirmRefill(null);
+  }
+
   const searching = query.trim().length > 0;
   const visibleProducts = searching
     ? products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
     : products.filter((p) => p.category_id === activeCategory);
-  const lowStockCount = products.filter((p) => p.stock <= (p.low_stock_threshold ?? 2)).length;
+
+  const lowStockCount = products.filter((p) => {
+    if (p.tracking_type === "volume") return (p.remaining_ml ?? 0) <= (p.low_volume_threshold_ml ?? 50);
+    return p.stock <= (p.low_stock_threshold ?? 2);
+  }).length;
 
   if (loading) {
     return <p className="text-sm text-center py-10" style={{ color: "#0A5C5499" }}>Loading pharmacy…</p>;
@@ -175,24 +238,25 @@ export default function PharmacyView() {
       </div>
 
       {!searching && (
-        <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
           {categories.map((c) => (
             <div key={c.id} className="shrink-0 flex items-center gap-1">
               <button
                 onClick={() => setActiveCategory(c.id)}
-                className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap"
+                className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1"
                 style={{
                   background: activeCategory === c.id ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "#ffffff",
                   color: activeCategory === c.id ? "white" : "#0A5C54",
                   border: activeCategory === c.id ? "none" : "1px solid #14B8A655",
                 }}
               >
+                {c.patient_visible === false && <EyeOff size={10} />}
                 {c.name}
               </button>
               {activeCategory === c.id && (
                 <>
                   <button
-                    onClick={() => setEditCategory({ id: c.id, name: c.name })}
+                    onClick={() => setEditCategory({ id: c.id, name: c.name, patient_visible: c.patient_visible !== false })}
                     className="w-6 h-6 rounded-full flex items-center justify-center bg-white shadow-sm"
                     style={{ color: "#148A7A", border: "1px solid #14B8A655" }}
                   >
@@ -222,7 +286,7 @@ export default function PharmacyView() {
 
       {categories.length === 0 && !searching && (
         <p className="text-sm text-center py-10" style={{ color: "#0A5C5466" }}>
-          No categories yet — tap "+" above to add one (e.g. Mother Tincture, Dilution, Syrup).
+          No categories yet — tap "+" above to add one (e.g. Mother Tincture, Dilution, Biochemic).
         </p>
       )}
 
@@ -235,7 +299,10 @@ export default function PharmacyView() {
             </p>
             {!searching && (
               <button
-                onClick={() => setShowAddProduct(true)}
+                onClick={() => {
+                  setProductForm(emptyProductForm);
+                  setShowAddProduct(true);
+                }}
                 className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white"
                 style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
               >
@@ -246,6 +313,81 @@ export default function PharmacyView() {
 
           <div className="space-y-2">
             {visibleProducts.map((p) => {
+              const isVolume = p.tracking_type === "volume";
+              if (isVolume) {
+                const unit = p.measure_unit || "ml";
+                const remaining = p.remaining_ml ?? 0;
+                const size = p.bottle_size_ml || 1;
+                const pct = Math.max(0, Math.min(100, Math.round((remaining / size) * 100)));
+                const low = remaining <= (p.low_volume_threshold_ml ?? 50);
+                return (
+                  <div key={p.id} className="bg-white rounded-xl p-3.5 shadow-sm">
+                    <div className="flex items-start justify-between mb-1.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate flex items-center gap-1" style={{ color: "#0A5C54" }}>
+                          <Droplet size={12} color="#148A7A" /> {p.name}
+                        </p>
+                        <p className="text-xs" style={{ color: "#0A5C5499" }}>
+                          ₹{p.price} · {remaining}{unit} / {p.bottle_size_ml}{unit}
+                        </p>
+                      </div>
+                      <div
+                        className="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: low ? "#DC26261A" : "#148A7A1A", color: low ? "#DC2626" : "#0A5C54" }}
+                      >
+                        {pct}%
+                      </div>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden mb-2.5">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: low ? "#DC2626" : "#148A7A" }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="number"
+                        placeholder={`${unit} dispensed`}
+                        value={dispenseDrafts[p.id] || ""}
+                        onChange={(e) => setDispenseDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
+                        className="flex-1 border rounded-lg px-2.5 py-1.5 text-xs outline-none"
+                        style={{ borderColor: "#14B8A655" }}
+                      />
+                      <button
+                        onClick={() => dispenseMl(p)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shrink-0"
+                        style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
+                      >
+                        Dispense
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setConfirmRefill(p)}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
+                        style={{ background: "#14B8A61A", color: "#0A5C54" }}
+                      >
+                        <RotateCcw size={12} /> Refill / Reset
+                      </button>
+                      <button
+                        onClick={() => openEditProduct(p)}
+                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ color: "#148A7A" }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteProduct(p)}
+                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ color: "#DC2626" }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               const threshold = p.low_stock_threshold ?? 2;
               const low = p.stock <= threshold;
               return (
@@ -306,7 +448,7 @@ export default function PharmacyView() {
                 {searching ? "No matching products." : "No products in this category yet."}
               </p>
             )}
-            </div>
+          </div>
         </>
       )}
 
@@ -320,6 +462,13 @@ export default function PharmacyView() {
             <form onSubmit={addCategory}>
               <label className={labelClass} style={labelStyle}>Category name</label>
               <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="e.g. Mother Tincture" className={inputClass} style={inputStyle} required />
+              <label className="flex items-center gap-2 mt-4 text-sm" style={{ color: "#0A5C54" }}>
+                <input type="checkbox" checked={newCategoryVisible} onChange={(e) => setNewCategoryVisible(e.target.checked)} />
+                Show this category in patient medicine list
+              </label>
+              <p className="text-[11px] mt-1" style={{ color: "#0A5C5499" }}>
+                Uncheck for pharmacy-only stock (e.g. Dilution bottles used only to refill smaller bottles).
+              </p>
               <button type="submit" className="w-full mt-4 py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 Add category
               </button>
@@ -327,7 +476,6 @@ export default function PharmacyView() {
           </div>
         </div>
       )}
-
       {editCategory && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setEditCategory(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -338,6 +486,10 @@ export default function PharmacyView() {
             <form onSubmit={saveEditCategory}>
               <label className={labelClass} style={labelStyle}>Category name</label>
               <input value={editCategory.name} onChange={(e) => setEditCategory((c) => ({ ...c, name: e.target.value }))} className={inputClass} style={inputStyle} required />
+              <label className="flex items-center gap-2 mt-4 text-sm" style={{ color: "#0A5C54" }}>
+                <input type="checkbox" checked={editCategory.patient_visible} onChange={(e) => setEditCategory((c) => ({ ...c, patient_visible: e.target.checked }))} />
+                Show this category in patient medicine list
+              </label>
               <button type="submit" className="w-full mt-4 py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 Save changes
               </button>
@@ -378,23 +530,65 @@ export default function PharmacyView() {
                 <input required value={productForm.name} onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))} className={inputClass} style={inputStyle} />
               </div>
               <div>
-                <label className={labelClass} style={labelStyle}>Quantity / size (e.g. 30ml, 10 tabs)</label>
-                <input value={productForm.unit_label} onChange={(e) => setProductForm((f) => ({ ...f, unit_label: e.target.value }))} className={inputClass} style={inputStyle} />
+                <label className={labelClass} style={labelStyle}>Track by</label>
+                <select
+                  value={productForm.tracking_type}
+                  onChange={(e) => setProductForm((f) => ({ ...f, tracking_type: e.target.value }))}
+                  className={inputClass}
+                  style={inputStyle}
+                >
+                  <option value="unit">Pieces (bottles, tablets, packets)</option>
+                  <option value="volume">Measured (ml or grams)</option>
+                </select>
               </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className={labelClass} style={labelStyle}>Price (₹)</label>
-                  <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
-                </div>
-                <div className="flex-1">
-                  <label className={labelClass} style={labelStyle}>Current stock</label>
-                  <input type="number" value={productForm.stock} onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))} className={inputClass} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label className={labelClass} style={labelStyle}>Alert when stock is at or below</label>
-                <input type="number" value={productForm.low_stock_threshold} onChange={(e) => setProductForm((f) => ({ ...f, low_stock_threshold: e.target.value }))} className={inputClass} style={inputStyle} />
-              </div>
+
+              {productForm.tracking_type === "unit" ? (
+                <>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Quantity / size (e.g. 30ml, 10 tabs)</label>
+                    <input value={productForm.unit_label} onChange={(e) => setProductForm((f) => ({ ...f, unit_label: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className={labelClass} style={labelStyle}>Price (₹)</label>
+                      <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
+                    </div>
+                    <div className="flex-1">
+                      <label className={labelClass} style={labelStyle}>Current stock</label>
+                      <input type="number" value={productForm.stock} onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))} className={inputClass} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Alert when stock is at or below</label>
+                    <input type="number" value={productForm.low_stock_threshold} onChange={(e) => setProductForm((f) => ({ ...f, low_stock_threshold: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Unit</label>
+                    <select value={productForm.measure_unit} onChange={(e) => setProductForm((f) => ({ ...f, measure_unit: e.target.value }))} className={inputClass} style={inputStyle}>
+                      <option value="ml">ml (Mother Tincture, Dilution)</option>
+                      <option value="g">grams (Biochemic tablets)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Price (₹, per bottle/box)</label>
+                    <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>
+                      Bottle/box size ({productForm.measure_unit})
+                    </label>
+                    <input type="number" required value={productForm.bottle_size_ml} onChange={(e) => setProductForm((f) => ({ ...f, bottle_size_ml: e.target.value }))} className={inputClass} style={inputStyle} placeholder={productForm.measure_unit === "g" ? "e.g. 500" : "e.g. 500"} />
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Alert when remaining is at or below ({productForm.measure_unit})</label>
+                    <input type="number" value={productForm.low_volume_threshold_ml} onChange={(e) => setProductForm((f) => ({ ...f, low_volume_threshold_ml: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                </>
+              )}
+
               <button type="submit" className="w-full py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 Add product
               </button>
@@ -416,23 +610,66 @@ export default function PharmacyView() {
                 <input required value={productForm.name} onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))} className={inputClass} style={inputStyle} />
               </div>
               <div>
-                <label className={labelClass} style={labelStyle}>Quantity / size</label>
-                <input value={productForm.unit_label} onChange={(e) => setProductForm((f) => ({ ...f, unit_label: e.target.value }))} className={inputClass} style={inputStyle} />
+                <label className={labelClass} style={labelStyle}>Track by</label>
+                <select
+                  value={productForm.tracking_type}
+                  onChange={(e) => setProductForm((f) => ({ ...f, tracking_type: e.target.value }))}
+                  className={inputClass}
+                  style={inputStyle}
+                >
+                  <option value="unit">Pieces (bottles, tablets, packets)</option>
+                  <option value="volume">Measured (ml or grams)</option>
+                </select>
               </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className={labelClass} style={labelStyle}>Price (₹)</label>
-                  <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
-                </div>
-                <div className="flex-1">
-                  <label className={labelClass} style={labelStyle}>Current stock</label>
-                  <input type="number" value={productForm.stock} onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))} className={inputClass} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label className={labelClass} style={labelStyle}>Alert when stock is at or below</label>
-                <input type="number" value={productForm.low_stock_threshold} onChange={(e) => setProductForm((f) => ({ ...f, low_stock_threshold: e.target.value }))} className={inputClass} style={inputStyle} />
-              </div>
+
+              {productForm.tracking_type === "unit" ? (
+                <>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Quantity / size</label>
+                    <input value={productForm.unit_label} onChange={(e) => setProductForm((f) => ({ ...f, unit_label: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className={labelClass} style={labelStyle}>Price (₹)</label>
+                      <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
+                    </div>
+                    <div className="flex-1">
+                      <label className={labelClass} style={labelStyle}>Current stock</label>
+                      <input type="number" value={productForm.stock} onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))} className={inputClass} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Alert when stock is at or below</label>
+                    <input type="number" value={productForm.low_stock_threshold} onChange={(e) => setProductForm((f) => ({ ...f, low_stock_threshold: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Unit</label>
+                    <select value={productForm.measure_unit} onChange={(e) => setProductForm((f) => ({ ...f, measure_unit: e.target.value }))} className={inputClass} style={inputStyle}>
+                      <option value="ml">ml (Mother Tincture, Dilution)</option>
+                      <option value="g">grams (Biochemic tablets)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Price (₹, per bottle/box)</label>
+                    <input type="number" value={productForm.price} onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Bottle/box size ({productForm.measure_unit})</label>
+                    <input type="number" required value={productForm.bottle_size_ml} onChange={(e) => setProductForm((f) => ({ ...f, bottle_size_ml: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Alert when remaining is at or below ({productForm.measure_unit})</label>
+                    <input type="number" value={productForm.low_volume_threshold_ml} onChange={(e) => setProductForm((f) => ({ ...f, low_volume_threshold_ml: e.target.value }))} className={inputClass} style={inputStyle} />
+                  </div>
+                  <p className="text-[11px]" style={{ color: "#0A5C5499" }}>
+                    Changing bottle/box size doesn't reset current remaining amount — use "Refill / Reset" on the product card for that.
+                  </p>
+                </>
+              )}
+
               <button type="submit" className="w-full py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 Save changes
               </button>
@@ -459,6 +696,25 @@ export default function PharmacyView() {
           </div>
         </div>
       )}
+
+      {confirmRefill && (
+        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmRefill(null)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Refill / Reset?</h3>
+            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>
+              This will reset <strong>{confirmRefill.name}</strong> back to full — {confirmRefill.bottle_size_ml}{confirmRefill.measure_unit || "ml"}. Use this when you open a new bottle/box.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmRefill(null)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>
+                Cancel
+              </button>
+              <button onClick={() => refillProduct(confirmRefill)} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
+                Refill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-            }
+                    }
