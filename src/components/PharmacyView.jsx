@@ -148,7 +148,7 @@ export default function PharmacyView() {
       tracking_type: productForm.tracking_type,
       measure_unit: isVolume ? productForm.measure_unit : null,
       bottle_size_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
-      remaining_ml: isVolume ? (editProduct.remaining_ml ?? Number(productForm.bottle_size_ml) || 0) : null,
+      remaining_ml: isVolume ? (editProduct.remaining_ml ?? Number(productForm.bottle_size_ml) || 0)) : null,
       low_volume_threshold_ml: isVolume ? Number(productForm.low_volume_threshold_ml) || 50 : null,
     };
     const { error } = await supabase.from("pharmacy_products").update(updates).eq("id", editProduct.id);
