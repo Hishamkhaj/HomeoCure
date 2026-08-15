@@ -7,6 +7,7 @@ import PatientDetail from "./components/PatientDetail";
 import AboutModal from "./components/AboutModal";
 import PharmacyView from "./components/PharmacyView";
 import FollowUpView from "./components/FollowUpView";
+import ReportsView from "./components/ReportsView";
 import { LogOut, Leaf } from "lucide-react";
 
 function dateStrToTs(dateStr) {
@@ -39,22 +40,41 @@ export default function App() {
   async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
     if (!medicines || medicines.length === 0) return;
     for (const m of medicines) {
-      const { data: prodRows, error: fetchErr } = await supabase
-        .from("pharmacy_products")
-        .select("id, stock")
-        .eq("id", m.product_id);
-      if (!fetchErr && prodRows && prodRows.length > 0) {
-        const currentStock = prodRows[0].stock;
-        const newStock = Math.max(0, currentStock - m.qty);
-        await supabase.from("pharmacy_products").update({ stock: newStock }).eq("id", m.product_id);
+      if (m.ml) {
+        const { data: prodRows, error: fetchErr } = await supabase
+          .from("pharmacy_products")
+          .select("id, remaining_ml")
+          .eq("id", m.product_id);
+        if (!fetchErr && prodRows && prodRows.length > 0) {
+          const currentRemaining = prodRows[0].remaining_ml || 0;
+          const newRemaining = Math.max(0, currentRemaining - m.ml);
+          await supabase.from("pharmacy_products").update({ remaining_ml: newRemaining }).eq("id", m.product_id);
+        }
+        await supabase.from("pharmacy_sales").insert({
+          product_id: m.product_id,
+          product_name: m.name,
+          patient_id: patientId,
+          ml_dispensed: m.ml,
+          sold_at: soldAtDateStr,
+        });
+      } else {
+        const { data: prodRows, error: fetchErr } = await supabase
+          .from("pharmacy_products")
+          .select("id, stock")
+          .eq("id", m.product_id);
+        if (!fetchErr && prodRows && prodRows.length > 0) {
+          const currentStock = prodRows[0].stock;
+          const newStock = Math.max(0, currentStock - m.qty);
+          await supabase.from("pharmacy_products").update({ stock: newStock }).eq("id", m.product_id);
+        }
+        await supabase.from("pharmacy_sales").insert({
+          product_id: m.product_id,
+          product_name: m.name,
+          patient_id: patientId,
+          qty: m.qty,
+          sold_at: soldAtDateStr,
+        });
       }
-      await supabase.from("pharmacy_sales").insert({
-        product_id: m.product_id,
-        product_name: m.name,
-        patient_id: patientId,
-        qty: m.qty,
-        sold_at: soldAtDateStr,
-      });
     }
   }
 
@@ -148,6 +168,14 @@ export default function App() {
     }
   }
 
+  async function handleMarkPaid(patient) {
+    const updatedVisits = (patient.visits || []).map((v) => ({ ...v, paid_amount: v.cost || 0 }));
+    const { error } = await supabase.from("patients").update({ visits: updatedVisits }).eq("id", patient.id);
+    if (!error) {
+      setPatients((prev) => prev.map((p) => (p.id === patient.id ? { ...p, visits: updatedVisits } : p)));
+    }
+  }
+
   function goToPatientFromFollowUp(p) {
     setTab("patients");
     setSelected(p);
@@ -201,13 +229,13 @@ export default function App() {
           </button>
         </div>
 
-        <div className="flex gap-1.5 mb-5 bg-white/60 rounded-xl p-1">
+        <div className="flex gap-1.5 mb-5 bg-white/60 rounded-xl p-1 overflow-x-auto">
           <button
             onClick={() => {
               setTab("patients");
               setSelected(null);
             }}
-            className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap"
             style={{
               background: tab === "patients" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
               color: tab === "patients" ? "white" : "#0A5C54",
@@ -217,7 +245,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setTab("followup")}
-            className="flex-1 py-2 rounded-lg text-xs font-semibold transition relative"
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition relative whitespace-nowrap"
             style={{
               background: tab === "followup" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
               color: tab === "followup" ? "white" : "#0A5C54",
@@ -235,13 +263,23 @@ export default function App() {
           </button>
           <button
             onClick={() => setTab("pharmacy")}
-            className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap"
             style={{
               background: tab === "pharmacy" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
               color: tab === "pharmacy" ? "white" : "#0A5C54",
             }}
           >
             Pharmacy
+          </button>
+          <button
+            onClick={() => setTab("reports")}
+            className="flex-1 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap"
+            style={{
+              background: tab === "reports" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
+              color: tab === "reports" ? "white" : "#0A5C54",
+            }}
+          >
+            Reports
           </button>
         </div>
 
@@ -271,10 +309,12 @@ export default function App() {
         {tab === "followup" && <FollowUpView patients={patients} onSelect={goToPatientFromFollowUp} />}
 
         {tab === "pharmacy" && <PharmacyView />}
+
+        {tab === "reports" && <ReportsView patients={patients} onMarkPaid={handleMarkPaid} />}
       </div>
 
       {showAdd && <AddPatient onClose={() => setShowAdd(false)} onSave={handleAddPatient} />}
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
-            }
+      }
