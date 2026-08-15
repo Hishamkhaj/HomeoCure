@@ -19,6 +19,7 @@ export default function ReportsView({ patients, onMarkPaid }) {
   const [sales, setSales] = useState([]);
   const [loadingSales, setLoadingSales] = useState(true);
   const [pharmacyProducts, setPharmacyProducts] = useState([]);
+  const [pharmacyCategories, setPharmacyCategories] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [expandedDate, setExpandedDate] = useState(null);
   const [markingPaid, setMarkingPaid] = useState(null);
@@ -41,8 +42,10 @@ export default function ReportsView({ patients, onMarkPaid }) {
 
   async function fetchProducts() {
     setLoadingProducts(true);
-    const { data } = await supabase.from("pharmacy_products").select("*");
-    setPharmacyProducts(data || []);
+    const { data: prods } = await supabase.from("pharmacy_products").select("*");
+    const { data: cats } = await supabase.from("pharmacy_categories").select("*");
+    setPharmacyProducts(prods || []);
+    setPharmacyCategories(cats || []);
     setLoadingProducts(false);
   }
 
@@ -73,8 +76,9 @@ export default function ReportsView({ patients, onMarkPaid }) {
     .sort((a, b) => b.due - a.due);
   const totalPending = pendingPatients.reduce((sum, p) => sum + p.due, 0);
 
+  const refillEnabledCategoryIds = new Set(pharmacyCategories.filter((c) => c.show_in_refills === true).map((c) => c.id));
   const refillList = pharmacyProducts
-    .filter((p) => p.tracking_type === "volume")
+    .filter((p) => p.tracking_type === "volume" && refillEnabledCategoryIds.has(p.category_id))
     .map((p) => {
       const remaining = p.remaining_ml ?? 0;
       const ownThreshold = p.low_volume_threshold_ml ?? 50;
@@ -316,4 +320,4 @@ export default function ReportsView({ patients, onMarkPaid }) {
       )}
     </div>
   );
-              }
+    }
