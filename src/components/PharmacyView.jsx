@@ -32,6 +32,7 @@ export default function PharmacyView() {
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryVisible, setNewCategoryVisible] = useState(true);
+  const [newCategoryShowInRefills, setNewCategoryShowInRefills] = useState(false);
 
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
@@ -60,7 +61,7 @@ export default function PharmacyView() {
     if (!newCategoryName.trim()) return;
     const { data, error } = await supabase
       .from("pharmacy_categories")
-      .insert({ name: newCategoryName.trim(), patient_visible: newCategoryVisible })
+      .insert({ name: newCategoryName.trim(), patient_visible: newCategoryVisible, show_in_refills: newCategoryShowInRefills })
       .select()
       .single();
     if (!error) {
@@ -68,6 +69,7 @@ export default function PharmacyView() {
       setActiveCategory(data.id);
       setNewCategoryName("");
       setNewCategoryVisible(true);
+      setNewCategoryShowInRefills(false);
       setShowAddCategory(false);
     }
   }
@@ -76,7 +78,7 @@ export default function PharmacyView() {
     e.preventDefault();
     const { error } = await supabase
       .from("pharmacy_categories")
-      .update({ name: editCategory.name, patient_visible: editCategory.patient_visible })
+      .update({ name: editCategory.name, patient_visible: editCategory.patient_visible, show_in_refills: editCategory.show_in_refills })
       .eq("id", editCategory.id);
     if (!error) {
       setCategories((prev) => prev.map((c) => (c.id === editCategory.id ? { ...c, ...editCategory } : c)));
@@ -193,7 +195,10 @@ export default function PharmacyView() {
     const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: newRemaining }).eq("id", product.id);
     if (!error) {
       setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: newRemaining } : p)));
-      setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: newRemaining } : p)));
+      await supabase.from("pharmacy_sales").insert({ product_id: product.id, product_name: product.name, ml_dispensed: amt });
+      setDispenseDrafts((d) => ({ ...d, [product.id]: "" }));
+                                                  }
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: newRemaining } : p)));
       await supabase.from("pharmacy_sales").insert({ product_id: product.id, product_name: product.name, ml_dispensed: amt });
       setDispenseDrafts((d) => ({ ...d, [product.id]: "" }));
     }
@@ -281,7 +286,7 @@ export default function PharmacyView() {
               {activeCategory === c.id && (
                 <>
                   <button
-                    onClick={() => setEditCategory({ id: c.id, name: c.name, patient_visible: c.patient_visible !== false })}
+                    onClick={() => setEditCategory({ id: c.id, name: c.name, patient_visible: c.patient_visible !== false, show_in_refills: c.show_in_refills === true })}
                     className="w-6 h-6 rounded-full flex items-center justify-center bg-white shadow-sm"
                     style={{ color: "#148A7A", border: "1px solid #14B8A655" }}
                   >
@@ -398,7 +403,6 @@ export default function PharmacyView() {
                         onClick={() => openEditProduct(p)}
                         className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                         style={{ color: "#148A7A" }}
-                        style={{ color: "#148A7A" }}
                       >
                         <Pencil size={15} />
                       </button>
@@ -495,6 +499,13 @@ export default function PharmacyView() {
               <p className="text-[11px] mt-1" style={{ color: "#0A5C5499" }}>
                 Uncheck for pharmacy-only stock (e.g. Dilution bottles used only to refill smaller bottles).
               </p>
+              <label className="flex items-center gap-2 mt-4 text-sm" style={{ color: "#0A5C54" }}>
+                <input type="checkbox" checked={newCategoryShowInRefills} onChange={(e) => setNewCategoryShowInRefills(e.target.checked)} />
+                Show low bottles from this category in Refills list
+              </label>
+              <p className="text-[11px] mt-1" style={{ color: "#0A5C5499" }}>
+                Check this only for working bottles you refill often (e.g. 100ml Dilution). Leave off for Mother Tincture, Biochemic, large Dilution bottles.
+              </p>
               <button type="submit" className="w-full mt-4 py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 Add category
               </button>
@@ -516,6 +527,10 @@ export default function PharmacyView() {
               <label className="flex items-center gap-2 mt-4 text-sm" style={{ color: "#0A5C54" }}>
                 <input type="checkbox" checked={editCategory.patient_visible} onChange={(e) => setEditCategory((c) => ({ ...c, patient_visible: e.target.checked }))} />
                 Show this category in patient medicine list
+              </label>
+              <label className="flex items-center gap-2 mt-4 text-sm" style={{ color: "#0A5C54" }}>
+                <input type="checkbox" checked={editCategory.show_in_refills} onChange={(e) => setEditCategory((c) => ({ ...c, show_in_refills: e.target.checked }))} />
+                Show low bottles from this category in Refills list
               </label>
               <button type="submit" className="w-full mt-4 py-3 rounded-xl text-white font-semibold text-sm" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 Save changes
@@ -774,4 +789,4 @@ export default function PharmacyView() {
       )}
     </div>
   );
-                                                                                                                                       }
+                                                                                                  }
