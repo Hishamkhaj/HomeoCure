@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Calendar, Package, IndianRupee, ChevronDown, ChevronUp, CheckCircle } from "lucide-react";
+import { Calendar, Package, IndianRupee, ChevronDown, ChevronUp, CheckCircle, Droplet, RotateCcw } from "lucide-react";
+
+const SUGGESTION_THRESHOLD = 30;
 
 function dateStrFromTs(ts) {
   const d = new Date(ts);
@@ -16,11 +18,15 @@ export default function ReportsView({ patients, onMarkPaid }) {
   const [subTab, setSubTab] = useState("daily");
   const [sales, setSales] = useState([]);
   const [loadingSales, setLoadingSales] = useState(true);
+  const [pharmacyProducts, setPharmacyProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
   const [expandedDate, setExpandedDate] = useState(null);
   const [markingPaid, setMarkingPaid] = useState(null);
+  const [refilling, setRefilling] = useState(null);
 
   useEffect(() => {
     if (subTab === "sales") fetchSales();
+    if (subTab === "refills") fetchProducts();
   }, [subTab]);
 
   async function fetchSales() {
@@ -31,6 +37,13 @@ export default function ReportsView({ patients, onMarkPaid }) {
       .order("sold_at", { ascending: false });
     setSales(data || []);
     setLoadingSales(false);
+  }
+
+  async function fetchProducts() {
+    setLoadingProducts(true);
+    const { data } = await supabase.from("pharmacy_products").select("*");
+    setPharmacyProducts(data || []);
+    setLoadingProducts(false);
   }
 
   const dailyMap = {};
@@ -60,44 +73,95 @@ export default function ReportsView({ patients, onMarkPaid }) {
     .sort((a, b) => b.due - a.due);
   const totalPending = pendingPatients.reduce((sum, p) => sum + p.due, 0);
 
+  const refillList = pharmacyProducts
+    .filter((p) => p.tracking_type === "volume")
+    .map((p) => {
+      const remaining = p.remaining_ml ?? 0;
+      const ownThreshold = p.low_volume_threshold_ml ?? 50;
+      const due = remaining <= ownThreshold;
+      const suggested = !due && remaining <= SUGGESTION_THRESHOLD;
+      return { ...p, remaining, due, suggested };
+    })
+    .filter((p) => p.due || p.suggested)
+    .sort((a, b) => a.remaining - b.remaining);
+
   async function handleMarkPaid(patient) {
     setMarkingPaid(patient.id);
     await onMarkPaid(patient);
     setMarkingPaid(null);
   }
 
+  async function handleRefill(product) {
+    setRefilling(product.id);
+    const full = product.bottle_size_ml || 0;
+    const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: full }).eq("id", product.id);
+    if (!error) {
+      let updated = pharmacyProducts.map((p) => (p.id === product.id ? { ...p, remaining_ml: full } : p));
+      if (product.source_product_id) {
+        const source = pharmacyProducts.find((p) => p.id === product.source_product_id);
+        if (source) {
+          const newSourceRemaining = Math.max(0, (source.remaining_ml || 0) - full);
+          await supabase.from("pharmacy_products").update({ remaining_ml: newSourceRemaining }).eq("id", source.id);
+          updated = updated.map((p) => (p.id === source.id ? { ...p, remaining_ml: newSourceRemaining } : p));
+        }
+      }
+      setPharmacyProducts(updated);
+    }
+    setRefilling(null);
+  }
+
+  const refillDueCount = refillList.filter((p) => p.due).length;
+
   return (
     <div>
-      <div className="flex gap-1.5 mb-4 bg-white/60 rounded-xl p-1">
+      <div className="flex gap-1.5 mb-4 bg-white/60 rounded-xl p-1 overflow-x-auto">
         <button
           onClick={() => setSubTab("daily")}
-          className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
+          className="flex-1 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap"
           style={{
             background: subTab === "daily" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
             color: subTab === "daily" ? "white" : "#0A5C54",
           }}
         >
-          Daily Patients
+          Daily
         </button>
         <button
           onClick={() => setSubTab("sales")}
-          className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
+          className="flex-1 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap"
           style={{
             background: subTab === "sales" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
             color: subTab === "sales" ? "white" : "#0A5C54",
           }}
         >
-          Sales Log
+          Sales
         </button>
         <button
           onClick={() => setSubTab("pending")}
-          className="flex-1 py-2 rounded-lg text-xs font-semibold transition"
+          className="flex-1 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap"
           style={{
             background: subTab === "pending" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
             color: subTab === "pending" ? "white" : "#0A5C54",
           }}
         >
           Pending
+        </button>
+        <button
+          onClick={() => setSubTab("refills")}
+          className="flex-1 py-2 rounded-lg text-xs font-semibold transition relative whitespace-nowrap"
+          style={{
+            background: subTab === "refills" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "transparent",
+            color: subTab === "refills" ? "white" : "#0A5C54",
+          }}
+        >
+          Refills
+          {refillDueCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center text-white font-bold"
+              style={{ background: "#DC2626" }}
+            >
+              {refillDueCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -213,6 +277,43 @@ export default function ReportsView({ patients, onMarkPaid }) {
           </div>
         </div>
       )}
+
+      {subTab === "refills" && (
+        <div>
+          <p className="text-xs mb-3" style={{ color: "#0A5C5499" }}>
+            Bottles due for refill, plus nearby bottles under {SUGGESTION_THRESHOLD}ml/g worth refilling while the cabinet is open.
+          </p>
+          {loadingProducts ? (
+            <p className="text-center text-sm py-10" style={{ color: "#0A5C5499" }}>Loading…</p>
+          ) : refillList.length === 0 ? (
+            <p className="text-center text-sm py-10" style={{ color: "#0A5C5466" }}>Nothing needs refilling right now 🎉</p>
+          ) : (
+            <div className="space-y-2">
+              {refillList.map((p) => (
+                <div key={p.id} className="bg-white rounded-xl p-3.5 shadow-sm flex items-center justify-between">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <Droplet size={14} color={p.due ? "#DC2626" : "#B45309"} className="shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: "#0A5C54" }}>{p.name}</p>
+                      <p className="text-xs" style={{ color: p.due ? "#DC2626" : "#B45309" }}>
+                        {p.remaining}{p.measure_unit || "ml"} left {p.due ? "· due" : "· suggested"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRefill(p)}
+                    disabled={refilling === p.id}
+                    className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white shrink-0 disabled:opacity-60"
+                    style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
+                  >
+                    <RotateCcw size={12} /> {refilling === p.id ? "…" : "Mark Refilled"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
-        }
+              }
