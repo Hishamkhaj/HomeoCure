@@ -114,11 +114,13 @@ export default function PharmacyView() {
     e.preventDefault();
     const payload = { ...buildProductPayload(), category_id: activeCategory };
     const { data, error } = await supabase.from("pharmacy_products").insert(payload).select().single();
-    if (!error) {
-      setProducts((prev) => [...prev, data]);
-      setProductForm(emptyProductForm);
-      setShowAddProduct(false);
+    if (error) {
+      alert("Could not add product: " + error.message);
+      return;
     }
+    setProducts((prev) => [...prev, data]);
+    setProductForm(emptyProductForm);
+    setShowAddProduct(false);
   }
 
   function openEditProduct(p) {
