@@ -17,6 +17,7 @@ const emptyProductForm = {
   measure_unit: "ml",
   bottle_size_ml: "",
   low_volume_threshold_ml: "50",
+  source_product_id: "",
 };
 
 export default function PharmacyView() {
@@ -107,6 +108,7 @@ export default function PharmacyView() {
       bottle_size_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
       remaining_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
       low_volume_threshold_ml: isVolume ? Number(productForm.low_volume_threshold_ml) || 50 : null,
+      source_product_id: isVolume && productForm.source_product_id ? productForm.source_product_id : null,
     };
   }
 
@@ -135,6 +137,7 @@ export default function PharmacyView() {
       measure_unit: p.measure_unit || "ml",
       bottle_size_ml: String(p.bottle_size_ml ?? ""),
       low_volume_threshold_ml: String(p.low_volume_threshold_ml ?? 50),
+      source_product_id: p.source_product_id || "",
     });
   }
 
@@ -152,6 +155,7 @@ export default function PharmacyView() {
       bottle_size_ml: isVolume ? Number(productForm.bottle_size_ml) || 0 : null,
       remaining_ml: isVolume ? (editProduct.remaining_ml ?? (Number(productForm.bottle_size_ml) || 0)) : null,
       low_volume_threshold_ml: isVolume ? Number(productForm.low_volume_threshold_ml) || 50 : null,
+      source_product_id: isVolume && productForm.source_product_id ? productForm.source_product_id : null,
     };
     const { error } = await supabase.from("pharmacy_products").update(updates).eq("id", editProduct.id);
     if (!error) {
@@ -189,6 +193,7 @@ export default function PharmacyView() {
     const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: newRemaining }).eq("id", product.id);
     if (!error) {
       setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: newRemaining } : p)));
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: newRemaining } : p)));
       await supabase.from("pharmacy_sales").insert({ product_id: product.id, product_name: product.name, ml_dispensed: amt });
       setDispenseDrafts((d) => ({ ...d, [product.id]: "" }));
     }
@@ -197,7 +202,25 @@ export default function PharmacyView() {
   async function refillProduct(product) {
     const full = product.bottle_size_ml || 0;
     const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: full }).eq("id", product.id);
-    if (!error) setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: full } : p)));
+    if (error) {
+      setConfirmRefill(null);
+      return;
+    }
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, remaining_ml: full } : p)));
+
+    if (product.source_product_id) {
+      const source = products.find((p) => p.id === product.source_product_id);
+      if (source) {
+        const newSourceRemaining = Math.max(0, (source.remaining_ml || 0) - full);
+        const { error: srcErr } = await supabase
+          .from("pharmacy_products")
+          .update({ remaining_ml: newSourceRemaining })
+          .eq("id", source.id);
+        if (!srcErr) {
+          setProducts((prev) => prev.map((p) => (p.id === source.id ? { ...p, remaining_ml: newSourceRemaining } : p)));
+        }
+      }
+    }
     setConfirmRefill(null);
   }
 
@@ -240,7 +263,7 @@ export default function PharmacyView() {
       </div>
 
       {!searching && (
-      <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
           {categories.map((c) => (
             <div key={c.id} className="shrink-0 flex items-center gap-1">
               <button
@@ -375,6 +398,7 @@ export default function PharmacyView() {
                         onClick={() => openEditProduct(p)}
                         className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                         style={{ color: "#148A7A" }}
+                        style={{ color: "#148A7A" }}
                       >
                         <Pencil size={15} />
                       </button>
@@ -478,6 +502,7 @@ export default function PharmacyView() {
           </div>
         </div>
       )}
+
       {editCategory && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setEditCategory(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -588,6 +613,18 @@ export default function PharmacyView() {
                     <label className={labelClass} style={labelStyle}>Alert when remaining is at or below ({productForm.measure_unit})</label>
                     <input type="number" value={productForm.low_volume_threshold_ml} onChange={(e) => setProductForm((f) => ({ ...f, low_volume_threshold_ml: e.target.value }))} className={inputClass} style={inputStyle} />
                   </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Refill source (optional)</label>
+                    <select value={productForm.source_product_id} onChange={(e) => setProductForm((f) => ({ ...f, source_product_id: e.target.value }))} className={inputClass} style={inputStyle}>
+                      <option value="">None — track independently</option>
+                      {products.filter((p) => p.tracking_type === "volume").map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] mt-1" style={{ color: "#0A5C5499" }}>
+                      When you refill this bottle, the same amount is deducted from the linked bottle above (e.g. link a 100ml working bottle to its 500ml Dilution source).
+                    </p>
+                  </div>
                 </>
               )}
 
@@ -666,6 +703,18 @@ export default function PharmacyView() {
                     <label className={labelClass} style={labelStyle}>Alert when remaining is at or below ({productForm.measure_unit})</label>
                     <input type="number" value={productForm.low_volume_threshold_ml} onChange={(e) => setProductForm((f) => ({ ...f, low_volume_threshold_ml: e.target.value }))} className={inputClass} style={inputStyle} />
                   </div>
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Refill source (optional)</label>
+                    <select value={productForm.source_product_id} onChange={(e) => setProductForm((f) => ({ ...f, source_product_id: e.target.value }))} className={inputClass} style={inputStyle}>
+                      <option value="">None — track independently</option>
+                      {products.filter((p) => p.tracking_type === "volume" && p.id !== editProduct?.id).map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] mt-1" style={{ color: "#0A5C5499" }}>
+                      When you refill this bottle, the same amount is deducted from the linked bottle above.
+                    </p>
+                  </div>
                   <p className="text-[11px]" style={{ color: "#0A5C5499" }}>
                     Changing bottle/box size doesn't reset current remaining amount — use "Refill / Reset" on the product card for that.
                   </p>
@@ -706,6 +755,12 @@ export default function PharmacyView() {
             <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>
               This will reset <strong>{confirmRefill.name}</strong> back to full — {confirmRefill.bottle_size_ml}{confirmRefill.measure_unit || "ml"}. Use this when you open a new bottle/box.
             </p>
+            {confirmRefill.source_product_id && (
+              <p className="text-xs mb-3" style={{ color: "#148A7A" }}>
+                This will also deduct {confirmRefill.bottle_size_ml}{confirmRefill.measure_unit || "ml"} from{" "}
+                {products.find((p) => p.id === confirmRefill.source_product_id)?.name || "the linked bottle"}.
+              </p>
+            )}
             <div className="flex gap-3">
               <button onClick={() => setConfirmRefill(null)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>
                 Cancel
@@ -719,4 +774,4 @@ export default function PharmacyView() {
       )}
     </div>
   );
-                  }
+                                                                                                                                       }
