@@ -1,0 +1,431 @@
+import React, { useState, useEffect, useRef } from "react";
+import { supabase } from "../supabaseClient";
+import { ArrowLeft, Plus, CheckCircle, RotateCcw, Calendar, Pill, IndianRupee, Pencil, Calculator as CalcIcon } from "lucide-react";
+import MedicineSelector from "./MedicineSelector";
+import Calculator from "./Calculator";
+import PackagePicker from "./PackagePicker";
+
+const inputClass =
+  "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
+const inputStyle = { borderColor: "#14B8A655" };
+const labelClass = "text-xs font-medium block mb-1.5";
+const labelStyle = { color: "#0A5C54" };
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dateStrFromTs(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatDate(ts) {
+  return new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const emptyForm = {
+  date: todayStr(),
+  complaint: "",
+  medicineNote: "",
+  duration_days: "",
+  cost: "",
+  paid_amount: "",
+  payment_mode: "cash",
+  mr_commission: "",
+};
+
+export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit, onToggleStatus, onMarkLost, onReactivate }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingVisit, setEditingVisit] = useState(null); // the visit ts being edited, or null
+  const [form, setForm] = useState(emptyForm);
+  const [medicines, setMedicines] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [calcField, setCalcField] = useState(null);
+  const [mode, setMode] = useState("custom");
+  const [packageBase, setPackageBase] = useState(null);
+  const [confirmLost, setConfirmLost] = useState(false);
+  const priceMapRef = useRef({});
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("pharmacy_products").select("id, price, tracking_type, bottle_size_ml");
+      const map = {};
+      (data || []).forEach((p) => {
+        map[p.id] = p;
+      });
+      priceMapRef.current = map;
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!packageBase) return;
+    let extra = 0;
+    medicines.forEach((m) => {
+      if (packageBase.productIds.has(m.product_id)) return;
+      const prod = priceMapRef.current[m.product_id];
+      if (!prod) return;
+      if (m.ml) {
+        const unitPrice = prod.bottle_size_ml ? (prod.price / prod.bottle_size_ml) * m.ml : 0;
+        extra += unitPrice;
+      } else {
+        extra += (prod.price || 0) * (m.qty || 1);
+      }
+    });
+    setForm((f) => ({ ...f, cost: String(Math.round((packageBase.price + extra) * 100) / 100) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medicines, packageBase]);
+
+  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const visits = [...(patient.visits || [])].sort((a, b) => b.ts - a.ts);
+  const totalDue = visits.reduce((sum, v) => {
+    const cost = v.cost || 0;
+    const paid = v.paid_amount ?? cost;
+    return sum + Math.max(0, cost - paid);
+  }, 0);
+
+  function openAddForm() {
+    setEditingVisit(null);
+    setForm(emptyForm);
+    setMedicines([]);
+    setMode("custom");
+    setPackageBase(null);
+    setShowForm(true);
+  }
+
+  function openEditForm(v) {
+    setEditingVisit(v.ts);
+    setForm({
+      date: dateStrFromTs(v.ts),
+      complaint: v.complaint || "",
+      medicineNote: v.medicineNote || v.medicine || "",
+      duration_days: v.duration_days ?? "",
+      cost: v.cost ?? "",
+      paid_amount: v.paid_amount ?? v.cost ?? "",
+      payment_mode: v.payment_mode || "cash",
+      mr_commission: v.mr_commission ?? "",
+    });
+    setMedicines(v.medicines || []);
+    setMode("custom");
+    setShowForm(true);
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    if (editingVisit) {
+      await onEditVisit(editingVisit, { ...form, medicines });
+    } else {
+      await onAddVisit({ ...form, medicines });
+    }
+    setSaving(false);
+    setShowForm(false);
+  };
+
+  const isLost = patient.status === "lost";
+
+  return (
+    <div>
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm mb-4" style={{ color: "#148A7A" }}>
+        <ArrowLeft size={16} /> Back
+      </button>
+
+      <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-bold font-serif" style={{ color: "#0A5C54" }}>
+              {patient.name}
+            </h2>
+            <p className="text-xs" style={{ color: "#0A5C5499" }}>
+              #{patient.serial_no} {patient.contact ? `· ${patient.contact}` : ""}
+            </p>
+          </div>
+          <span
+            className="text-xs font-medium px-2.5 py-1 rounded-full"
+            style={{
+              background: isLost ? "#6B72801A" : patient.status === "open" ? "#F59E0B1A" : "#148A7A1A",
+              color: isLost ? "#6B7280" : patient.status === "open" ? "#B45309" : "#0A5C54",
+            }}
+          >
+            {isLost ? "Lost" : patient.status === "open" ? "Open" : "Closed"}
+          </span>
+        </div>
+
+        {totalDue > 0 && (
+          <div className="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            <IndianRupee size={14} className="text-red-600" />
+            <p className="text-xs text-red-700 font-medium">₹{totalDue} pending from this patient</p>
+          </div>
+        )}
+
+        {isLost ? (
+          <button
+            onClick={onReactivate}
+            className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border"
+            style={{ borderColor: "#14B8A655", color: "#0A5C54" }}
+          >
+            <RotateCcw size={16} /> Patient came back — reactivate
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={onToggleStatus}
+              className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border"
+              style={{
+                borderColor: patient.status === "open" ? "#148A7A" : "#14B8A655",
+                color: "#0A5C54",
+              }}
+            >
+              {patient.status === "open" ? (
+                <>
+                  <CheckCircle size={16} /> Mark case as closed
+                </>
+              ) : (
+                <>
+                  <RotateCcw size={16} /> Reopen case
+                </>
+              )}
+            </button>
+            {patient.status === "open" && (
+              <button
+                onClick={() => setConfirmLost(true)}
+                className="w-full mt-2 py-2 rounded-xl text-xs font-medium"
+                style={{ color: "#0A5C5499" }}
+              >
+                Won't be visiting again — mark as lost
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold" style={{ color: "#0A5C54" }}>
+          Visit history
+        </h3>
+        <button
+          onClick={openAddForm}
+          className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white"
+          style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
+        >
+          <Plus size={14} /> Add visit
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {visits.map((v, i) => {
+          const due = Math.max(0, (v.cost || 0) - (v.paid_amount ?? v.cost ?? 0));
+          return (
+            <div key={i} className="bg-white rounded-xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 text-xs" style={{ color: "#0A5C5499" }}>
+                  <Calendar size={12} />
+                  {formatDate(v.ts)}
+                </div>
+                <button onClick={() => openEditForm(v)} style={{ color: "#148A7A" }}>
+                  <Pencil size={13} />
+                </button>
+              </div>
+              <p className="text-sm font-medium mb-1" style={{ color: "#0A5C54" }}>
+                {v.complaint}
+              </p>
+              {(v.medicines?.length > 0 || v.medicine) && (
+                <div className="flex items-start gap-1.5 text-xs mt-1" style={{ color: "#148A7A" }}>
+                  <Pill size={12} className="mt-0.5 shrink-0" />
+                  <span>
+                    {v.medicines?.length > 0
+                      ? v.medicines.map((m) => `${m.name} ×${m.qty}`).join(", ")
+                      : v.medicine}
+                    {v.duration_days ? ` · ${v.duration_days} days` : ""}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex items-center gap-1.5 text-xs" style={{ color: "#0A5C5499" }}>
+                  <IndianRupee size={12} />
+                  {v.cost || 0} · {v.payment_mode || "-"}
+                  {due > 0 && <span className="text-red-600 font-medium">· ₹{due} due</span>}
+                </div>
+                {v.mr_commission ? (
+                  <span className="text-xs" style={{ color: "#0A5C5499" }}>
+                    MR: ₹{v.mr_commission}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setShowForm(false)}>
+          <div
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold font-serif mb-4" style={{ color: "#0A5C54" }}>
+              {editingVisit ? "Edit Visit" : "New Visit"}
+            </h3>
+
+            {!editingVisit && (
+              <div className="flex gap-2 bg-gray-100 rounded-xl p-1 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("custom");
+                    setPackageBase(null);
+                  }}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                  style={{
+                    background: mode === "custom" ? "white" : "transparent",
+                    color: "#0A5C54",
+                    boxShadow: mode === "custom" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  Custom
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("package")}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                  style={{
+                    background: mode === "package" ? "white" : "transparent",
+                    color: "#0A5C54",
+                    boxShadow: mode === "package" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  Use Package
+                </button>
+              </div>
+            )}
+
+            {!editingVisit && mode === "package" && (
+              <div className="mb-4">
+                <PackagePicker
+                  onApply={({ complaint, medicines: pkgMeds, cost, mr_commission, duration_days, basePrice, packageProductIds }) => {
+                    setForm((f) => ({ ...f, complaint, cost, mr_commission, duration_days }));
+                    setMedicines(pkgMeds);
+                    setPackageBase({ price: basePrice, productIds: new Set(packageProductIds) });
+                  }}
+                />
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className={labelClass} style={labelStyle}>Visit date</label>
+                <input type="date" required value={form.date} onChange={update("date")} className={inputClass} style={inputStyle} />
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Complaint / diagnosis</label>
+                <input required value={form.complaint} onChange={update("complaint")} className={inputClass} style={inputStyle} />
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Medicines given</label>
+                <MedicineSelector value={medicines} onChange={setMedicines} />
+                {packageBase && (
+                  <p className="text-[11px] mt-1.5" style={{ color: "#148A7A" }}>
+                    Package price already included. Any extra medicine you add here will add its price to the total automatically.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Notes (optional)</label>
+                <input value={form.medicineNote} onChange={update("medicineNote")} className={inputClass} style={inputStyle} />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className={labelClass} style={labelStyle}>Duration (days)</label>
+                  <input type="number" value={form.duration_days} onChange={update("duration_days")} className={inputClass} style={inputStyle} />
+                </div>
+                <div className="flex-1">
+                  <label className={labelClass} style={labelStyle}>Total cost (₹)</label>
+                  <div className="flex gap-1.5">
+                    <input type="number" value={form.cost} onChange={update("cost")} className={inputClass} style={inputStyle} />
+                    <button type="button" onClick={() => setCalcField("cost")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}>
+                      <CalcIcon size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Amount paid (₹)</label>
+                <div className="flex gap-1.5">
+                  <input type="number" value={form.paid_amount} onChange={update("paid_amount")} placeholder={form.cost || "0"} className={inputClass} style={inputStyle} />
+                  <button type="button" onClick={() => setCalcField("paid_amount")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}>
+                    <CalcIcon size={16} />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>Payment mode</label>
+                <select value={form.payment_mode} onChange={update("payment_mode")} className={inputClass} style={inputStyle}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass} style={labelStyle}>MR commission (₹, optional)</label>
+                <div className="flex gap-1.5">
+                  <input type="number" value={form.mr_commission} onChange={update("mr_commission")} className={inputClass} style={inputStyle} />
+                  <button type="button" onClick={() => setCalcField("mr_commission")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}>
+                    <CalcIcon size={16} />
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
+              >
+                {saving ? "Saving…" : editingVisit ? "Save changes" : "Save visit"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {calcField && (
+        <Calculator
+          label={calcField === "cost" ? "Total cost" : calcField === "paid_amount" ? "Amount paid" : "MR commission"}
+          initialValue={form[calcField]}
+          onClose={() => setCalcField(null)}
+          onUse={(val) => {
+            setForm((f) => ({ ...f, [calcField]: val }));
+            setCalcField(null);
+          }}
+        />
+      )}
+
+      {confirmLost && (
+        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmLost(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Mark as lost?</h3>
+            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>
+              This marks <strong>{patient.name}</strong> as not returning. They'll be excluded from follow-up reminders, and counted in the monthly report. You can reactivate them anytime if they come back.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmLost(false)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onMarkLost();
+                  setConfirmLost(false);
+                }}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold text-white"
+                style={{ background: "#6B7280" }}
+              >
+                Mark as Lost
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
