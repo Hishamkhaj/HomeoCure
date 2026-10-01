@@ -180,7 +180,7 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
     )}
   </Section>
 
-<AccuracyPanel now="{now}" patients="{patients}"/>
+<AccuracyPanel now={now} patients={patients}/>
 
   <div className="mt-6 mb-2">
     {weather && (
