@@ -61,28 +61,32 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
 
  const expectedIncomeModel=useMemo(()=>{
    const seen=new Set(todayPatients.map(x=>x.patient.id));
-   const candidates=[...new Map(
-     [...outlook.today,...outlook.yesterday]
-       .filter(p=>!seen.has(p.id))
-       .map(p=>[p.id,p])
-   ).values()];
+   const candidates=[...new Map([...outlook.today,...outlook.yesterday].filter(p=>!seen.has(p.id)).map(p=>[p.id,p])).values()];
    const weightedPatients=candidates.reduce((s,p)=>s+(outlook.today.includes(p)?0.65:0.35),0);
-   const expectedPatients=Math.max(
-     todayPatients.length,
-     Math.round(historicalWeekday.avgPatients*0.45+(todayPatients.length+weightedPatients)*0.55)
-   );
-   const patientIncome=Math.max(
-     collection.patient,
-     Math.round(expectedPatients*Math.max(historicalWeekday.avgPerPatient,0))
-   );
+   const expectedPatients=Math.max(todayPatients.length,Math.round(historicalWeekday.avgPatients*0.45+(todayPatients.length+weightedPatients)*0.55));
+   const patientIncome=Math.max(collection.patient,Math.round(expectedPatients*Math.max(historicalWeekday.avgPerPatient,0)));
    return {patients:expectedPatients,income:Math.round(patientIncome+pharmacySales),historyDays:historicalWeekday.days.length};
  },[todayPatients,outlook,historicalWeekday,collection.patient,pharmacySales]);
 
  const expectedBase=Math.max(visitsToday.length,expectedIncomeModel.patients,outlook.today.length+outlook.yesterday.length),expectedRange=[expectedBase,Math.max(expectedBase,expectedIncomeModel.patients+Math.round(outlook.tomorrow.length*.25))];
 
- const priorities=[];if(outlook.yesterday.length)priorities.push({label:`${outlook.yesterday.length} missed yesterday`,detail:"Follow up before the gap gets longer",go:"followup"});if(inventory.orders.length)priorities.push({label:`${inventory.orders.length} medicine${inventory.orders.length>1?"s":""} to order`,detail:inventory.orders.slice(0,2).map(x=>x.name).join(", "),go:"reports"});if(inventory.refills.length)priorities.push({label:`${inventory.refills.length} refill${inventory.refills.length>1?"s":""} due`,detail:inventory.refills.slice(0,2).map(x=>x.name).join(", "),go:"reports"});if(pendingPayments.length)priorities.push({label:`${pendingPayments.length} patient payment${pendingPayments.length>1?"s":""} pending`,detail:`${money(pendingTotal)} outstanding`,go:"reports"});if(mrPending.amount)priorities.push({label:"MR payment pending",detail:money(mrPending.amount),go:"mr"});if(!priorities.length)priorities.push({label:"No urgent operational task",detail:"Your dashboard is clear right now",go:null});
- const clinicOpen=(()=>{const m=now.getHours()*60+now.getMinutes();return(m>=600&&m<840)||(m>=1020&&m<1260)})();
-                     return (
+ const priorities=[];
+ if(weather) {
+   let wMsg = "Weather is pleasant. Good conditions for regular clinic visits.";
+   let wTitle = "Clear Weather";
+   let t = Number(weather.temp || weather.temperature || 25);
+   let r = Number(weather.rain || weather.rain_risk || 0);
+   let d = String(weather.desc || weather.condition || "").toLowerCase();
+   if (r > 40 || d.includes("rain")) { wTitle = "Rain Alert"; wMsg = "High chance of rain today. It can affect patient walk-ins negatively."; }
+   else if (t >= 38) { wTitle = "Heat Alert"; wMsg = "Very hot outside. Patients might prefer visiting in the evening."; }
+   else if (t <= 15) { wTitle = "Cold Alert"; wMsg = "Quite cold today. Morning walk-ins might be delayed."; }
+   priorities.push({ label: wTitle, detail: wMsg, go: null, isWeather: true });
+ }
+ if(outlook.yesterday.length)priorities.push({label:`${outlook.yesterday.length} missed yesterday`,detail:"Follow up before the gap gets longer",go:"followup"});
+ if(inventory.orders.length)priorities.push({label:`${inventory.orders.length} medicine${inventory.orders.length>1?"s":""} to order`,detail:inventory.orders.slice(0,2).map(x=>x.name).join(", "),go:"reports"});
+ if(inventory.refills.length)priorities.push({label:`${inventory.refills.length} refill${inventory.refills.length>1?"s":""} due`,detail:inventory.refills.slice(0,2).map(x=>x.name).join(", "),go:"reports"});
+ if(pendingPayments.length)priorities.push({label:`${pendingPayments.length} patient payment${pendingPayments.length>1?"s":""} pending`,detail:`${money(pendingTotal)} outstanding`,go:"reports"});
+ if(mrPending.amount)priorities.push({label:"MR payment pending",detail:money(mrPending.amount),go:"mr"}); return (
  <div className="space-y-4 pb-4">
   <div className="px-1 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-wide" style={{color:TEAL2}}>Today at {now.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"})}</p><h1 className="text-xl font-bold font-serif" style={{color:TEAL}}>{now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}</h1></div><span className="text-[9px] font-bold px-2.5 py-1.5 rounded-full bg-white shadow-sm" style={{color:clinicOpen?GREEN:AMBER}}>● {clinicOpen?"Clinic open":"Clinic closed"}</span></div>
   <div className="grid grid-cols-2 gap-3"><Metric icon={<Users size={14}/>} label="Patients" value={todayPatients.length} sub="Seen today" onClick={()=>onNavigate?.("patients")}/><Metric icon={<Activity size={14}/>} label="Expected" value={expectedRange[0]===expectedRange[1]?expectedRange[0]:`${expectedRange[0]}–${expectedRange[1]}`} sub="Today outlook"/><Metric icon={<WalletCards size={14}/>} label="Collected" value={money(totalCollected)} sub="Patient + pharmacy"/><Metric icon={<CalendarDays size={14}/>} label="Follow-ups" value={outlook.today.length+outlook.yesterday.length} sub="Due + missed" onClick={()=>onNavigate?.("followup")}/></div>
@@ -112,7 +116,6 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
   
   <Section icon={<CalendarDays size={16}/>} title="Today's Patient Outlook" subtitle="Priority: today → missed yesterday → tomorrow" action={<button type="button" onClick={()=>onNavigate?.("followup")} className="text-[10px] font-bold" style={{color:TEAL2}}>Follow-up</button>}><div className="space-y-2">{[["today","Due today",AMBER],["yesterday","Missed yesterday",RED],["tomorrow","Due tomorrow",TEAL2]].map(([key,label,tone])=><div key={key} className="rounded-2xl p-3" style={{background:"#F4FAF8"}}><div className="flex items-center justify-between mb-2"><p className="text-[10px] font-bold" style={{color:tone}}>{label}</p><span className="text-xs font-bold" style={{color:TEAL}}>{outlook[key].length}</span></div>{outlook[key].slice(0,3).map(p=><div key={p.id} className="mb-2 last:mb-0"><PersonRow patient={p} label={p.contact||"Open patient"} tone={tone} onSelect={selectPatient}/></div>)}{!outlook[key].length&&<p className="text-[9px]" style={{color:MUTED}}>None</p>}{outlook[key].length>3&&<p className="text-[9px] mt-2 text-right" style={{color:MUTED}}>+{outlook[key].length-3} more</p>}</div>)}</div></Section>
   
-  {/* नया मॉडिफाई किया हुआ Collection Section */}
   <Section icon={<IndianRupee size={16}/>} title="Today's Revenue" subtitle="Detailed financial breakdown">
     <div className="rounded-2xl p-4 mb-3 shadow-sm" style={{background:TEAL, color:"white"}}>
       <p className="text-[10px] font-bold uppercase tracking-wide opacity-80">Total Revenue (Patient + Pharmacy)</p>
@@ -122,56 +125,31 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
         <div className="flex items-center gap-1"><Smartphone size={14} className="opacity-70"/> <span>Total UPI: {money(collection.mode.upi + pharmacyDetails.upi)}</span></div>
       </div>
     </div>
-
     <div className="grid grid-cols-2 gap-3 mb-3">
       <div className="rounded-2xl p-3 border border-gray-100" style={{background:"#F4FAF8"}}>
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Users size={12} color={TEAL2}/>
-          <p className="text-[10px] font-bold" style={{color:TEAL2}}>Patient Income</p>
-        </div>
+        <div className="flex items-center gap-1.5 mb-1.5"><Users size={12} color={TEAL2}/><p className="text-[10px] font-bold" style={{color:TEAL2}}>Patient Income</p></div>
         <p className="text-lg font-bold" style={{color:TEAL}}>{money(collection.patient)}</p>
         <div className="mt-2 space-y-1">
-          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}>
-            <span>Cash</span>
-            <span style={{color:TEAL}}>{money(collection.mode.cash)}</span>
-          </div>
-          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}>
-            <span>UPI</span>
-            <span style={{color:TEAL}}>{money(collection.mode.upi)}</span>
-          </div>
+          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}><span>Cash</span><span style={{color:TEAL}}>{money(collection.mode.cash)}</span></div>
+          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}><span>UPI</span><span style={{color:TEAL}}>{money(collection.mode.upi)}</span></div>
         </div>
       </div>
-
       <div className="rounded-2xl p-3 border border-gray-100" style={{background:"#F4FAF8"}}>
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Package size={12} color={TEAL2}/>
-          <p className="text-[10px] font-bold" style={{color:TEAL2}}>Pharmacy Sales</p>
-        </div>
+        <div className="flex items-center gap-1.5 mb-1.5"><Package size={12} color={TEAL2}/><p className="text-[10px] font-bold" style={{color:TEAL2}}>Pharmacy Sales</p></div>
         <p className="text-lg font-bold" style={{color:TEAL}}>{money(pharmacyDetails.total)}</p>
         <div className="mt-2 space-y-1">
-          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}>
-            <span>Cash</span>
-            <span style={{color:TEAL}}>{money(pharmacyDetails.cash)}</span>
-          </div>
-          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}>
-            <span>UPI</span>
-            <span style={{color:TEAL}}>{money(pharmacyDetails.upi)}</span>
-          </div>
+          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}><span>Cash</span><span style={{color:TEAL}}>{money(pharmacyDetails.cash)}</span></div>
+          <div className="flex justify-between items-center text-[9px] font-medium" style={{color:MUTED}}><span>UPI</span><span style={{color:TEAL}}>{money(pharmacyDetails.upi)}</span></div>
         </div>
       </div>
     </div>
-
     {pharmacyDetails.list.length > 0 && (
       <div className="rounded-xl p-3 bg-gray-50 border border-gray-100">
         <p className="text-[9px] font-bold uppercase tracking-wide mb-2" style={{color:MUTED}}>Pharmacy Products Sold Today</p>
         <div className="space-y-2">
           {pharmacyDetails.list.map((item, idx) => (
             <div key={idx} className="flex justify-between items-center">
-              <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{background:TEAL2}}></div>
-                <span className="text-[10px] font-semibold" style={{color:TEAL}}>{item.name}</span>
-                <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-md">x{item.qty}</span>
-              </div>
+              <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full" style={{background:TEAL2}}></div><span className="text-[10px] font-semibold" style={{color:TEAL}}>{item.name}</span><span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-md">x{item.qty}</span></div>
               <span className="text-[10px] font-bold" style={{color:TEAL}}>{money(item.amt)}</span>
             </div>
           ))}
@@ -180,7 +158,7 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
     )}
   </Section>
   
-  <Section icon={<ClipboardList size={16}/>} title="Today's Priorities" subtitle="Only actions that may need attention today"><div className="space-y-2">{priorities.slice(0,5).map((x,i)=><button type="button" key={`${x.label}-${i}`} onClick={()=>x.go&&onNavigate?.(x.go)} className="w-full flex items-center gap-3 p-3 rounded-2xl text-left" style={{background:"#F4FAF8"}}><div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold" style={{background:i===0?"#FEF3C7":"#14B8A61A",color:i===0?AMBER:TEAL2}}>{i+1}</div><div className="flex-1 min-w-0"><p className="text-xs font-semibold" style={{color:TEAL}}>{x.label}</p><p className="text-[9px] mt-0.5 truncate" style={{color:MUTED}}>{x.detail}</p></div>{x.go&&<ArrowRight size={14} color={TEAL2}/>}</button>)}</div></Section>
+  <Section icon={<ClipboardList size={16}/>} title="Today's Priorities" subtitle="Only actions that may need attention today"><div className="space-y-2">{priorities.slice(0,6).map((x,i)=><button type="button" key={`${x.label}-${i}`} onClick={()=>x.go&&onNavigate?.(x.go)} className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left ${!x.go?"cursor-default":""}`} style={{background:"#F4FAF8"}}><div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold" style={{background:x.isWeather?"#E0F2FE":(i===0?"#FEF3C7":"#14B8A61A"),color:x.isWeather?"#0369A1":(i===0?AMBER:TEAL2)}}>{x.isWeather?<CloudSun size={14}/>:(x.isWeather?i:i+1)}</div><div className="flex-1 min-w-0"><p className="text-xs font-semibold" style={{color:TEAL}}>{x.label}</p><p className="text-[9px] mt-0.5 truncate" style={{color:MUTED}}>{x.detail}</p></div>{x.go&&<ArrowRight size={14} color={TEAL2}/>}</button>)}</div></Section>
   
   <div className="grid grid-cols-2 gap-3"><Section icon={<Package size={15}/>} title="Medicine to Order" subtitle={`${inventory.orders.length} low-stock unit products`}><p className="text-lg font-bold" style={{color:TEAL}}>{inventory.orders.length}</p><p className="text-[9px] mt-1 truncate" style={{color:MUTED}}>{inventory.orders.slice(0,2).map(x=>x.name).join(", ")||"No low-stock units"}</p><button type="button" onClick={()=>onNavigate?.("reports")} className="text-[9px] font-bold mt-2" style={{color:TEAL2}}>View Orders →</button></Section><Section icon={<RefreshCw size={15}/>} title="Refills" subtitle={`${inventory.refills.length} volume products due`}><p className="text-lg font-bold" style={{color:TEAL}}>{inventory.refills.length}</p><p className="text-[9px] mt-1 truncate" style={{color:MUTED}}>{inventory.refills.slice(0,2).map(x=>x.name).join(", ")||"No refill due"}</p><button type="button" onClick={()=>onNavigate?.("reports")} className="text-[9px] font-bold mt-2" style={{color:TEAL2}}>View Refills →</button></Section></div>
   
@@ -215,4 +193,8 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
 
  </div>
  );
-  }
+       }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+ if(!priorities.length)priorities.push({label:"No urgent operational task",detail:"Your dashboard is clear right now",go:null});
+ const clinicOpen=(()=>{const m=now.getHours()*60+now.getMinutes();return(m>=600&&m<840)||(m>=1020&&m<1260)})();
+                                                                                                                                                                                                                                            
