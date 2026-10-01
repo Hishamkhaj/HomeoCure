@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Activity, ArrowRight, Banknote, Building2, CalendarDays, ChevronRight, CloudSun, CreditCard, IndianRupee, Package, RefreshCw, Sparkles, Smartphone, Users, WalletCards, ClipboardList } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import AccuracyPanel from "./AccuracyPanel";
 
 const DAY=86400000, TEAL="#0A5C54", TEAL2="#148A7A", MUTED="#0A5C5499", RED="#DC2626", AMBER="#B45309", GREEN="#15803D";
 const dateKey=(d=new Date())=>{const x=new Date(d);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`};
@@ -125,7 +126,8 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
     )}
   </Section>
 
+  <AccuracyPanel />
+
  </div>
  );
-   }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+}
