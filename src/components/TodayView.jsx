@@ -86,7 +86,10 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
  if(inventory.orders.length)priorities.push({label:`${inventory.orders.length} medicine${inventory.orders.length>1?"s":""} to order`,detail:inventory.orders.slice(0,2).map(x=>x.name).join(", "),go:"reports"});
  if(inventory.refills.length)priorities.push({label:`${inventory.refills.length} refill${inventory.refills.length>1?"s":""} due`,detail:inventory.refills.slice(0,2).map(x=>x.name).join(", "),go:"reports"});
  if(pendingPayments.length)priorities.push({label:`${pendingPayments.length} patient payment${pendingPayments.length>1?"s":""} pending`,detail:`${money(pendingTotal)} outstanding`,go:"reports"});
- if(mrPending.amount)priorities.push({label:"MR payment pending",detail:money(mrPending.amount),go:"mr"}); return (
+ if(mrPending.amount)priorities.push({label:"MR payment pending",detail:money(mrPending.amount),go:"mr"});
+ if(!priorities.length)priorities.push({label:"No urgent operational task",detail:"Your dashboard is clear right now",go:null});
+ const clinicOpen=(()=>{const m=now.getHours()*60+now.getMinutes();return(m>=600&&m<840)||(m>=1020&&m<1260)})();
+                                               return (
  <div className="space-y-4 pb-4">
   <div className="px-1 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-wide" style={{color:TEAL2}}>Today at {now.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"})}</p><h1 className="text-xl font-bold font-serif" style={{color:TEAL}}>{now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})}</h1></div><span className="text-[9px] font-bold px-2.5 py-1.5 rounded-full bg-white shadow-sm" style={{color:clinicOpen?GREEN:AMBER}}>● {clinicOpen?"Clinic open":"Clinic closed"}</span></div>
   <div className="grid grid-cols-2 gap-3"><Metric icon={<Users size={14}/>} label="Patients" value={todayPatients.length} sub="Seen today" onClick={()=>onNavigate?.("patients")}/><Metric icon={<Activity size={14}/>} label="Expected" value={expectedRange[0]===expectedRange[1]?expectedRange[0]:`${expectedRange[0]}–${expectedRange[1]}`} sub="Today outlook"/><Metric icon={<WalletCards size={14}/>} label="Collected" value={money(totalCollected)} sub="Patient + pharmacy"/><Metric icon={<CalendarDays size={14}/>} label="Follow-ups" value={outlook.today.length+outlook.yesterday.length} sub="Due + missed" onClick={()=>onNavigate?.("followup")}/></div>
@@ -193,8 +196,4 @@ export default function TodayView({patients=[],onSelect,onSelectPatient,onNaviga
 
  </div>
  );
-       }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
- if(!priorities.length)priorities.push({label:"No urgent operational task",detail:"Your dashboard is clear right now",go:null});
- const clinicOpen=(()=>{const m=now.getHours()*60+now.getMinutes();return(m>=600&&m<840)||(m>=1020&&m<1260)})();
-                                                                                                                                                                                                                                            
+}
