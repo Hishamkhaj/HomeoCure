@@ -10,7 +10,7 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "Hello Dr. Hisham! ✨ मैं आपका HomeoCure AI असिस्टेंट हूँ। मेरा दिमाग अब काम कर रहा है, आप मुझसे कुछ भी पूछ सकते हैं!",
+      text: "Hello Dr. Hisham! ✨ Apna Homeo Hall का AI असिस्टेंट तैयार है। बताइए, आज क्लिनिक में क्या मदद चाहिए?",
     },
   ]);
   
@@ -32,23 +32,33 @@ export default function AIAssistant() {
     setIsTyping(true);
 
     try {
-      // Step 1 में बनाई गई API को मैसेज भेजना
+      // क्लिनिक का लाइव डेटा ऑटोमैटिक कैप्चर करना (लोकल स्टोरेज या बेसिक स्टेट से)
+      let clinicContext = "Apna Homeo Hall Clinic Dashboard Active.";
+      try {
+        const storedData = localStorage.getItem("homeocure_patients") || localStorage.getItem("clinic_data");
+        if (storedData) {
+          clinicContext += " Recent Data: " + storedData.slice(0, 300);
+        }
+      } catch (err) {
+        // इग्नोर अगर डेटा न मिले
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({ message: userText, clinicContext }),
       });
       
       const data = await res.json();
       
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: data.reply || "माफ़ करना, मुझे कुछ समझ नहीं आया।" }
+        { role: "assistant", text: data.reply || "माफ़ करना, कुछ गड़बड़ हो गई।" }
       ]);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "कनेक्शन में कोई दिक्कत आ गई है। कृपया फिर से कोशिश करें।" }
+        { role: "assistant", text: "कनेक्शन में दिक्कत आ रही है।" }
       ]);
     } finally {
       setIsTyping(false);
@@ -71,7 +81,7 @@ export default function AIAssistant() {
                 <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30"><Sparkles size={16}/></div>
                 <div>
                   <h3 className="text-sm font-bold font-serif leading-tight">HomeoCure AI</h3>
-                  <p className="text-[10px] opacity-80">Online & Ready</p>
+                  <p className="text-[10px] opacity-80">Apna Homeo Hall Manager</p>
                 </div>
               </div>
               <button onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition"><X size={20}/></button>
@@ -99,7 +109,7 @@ export default function AIAssistant() {
 
             <div className="p-3 bg-white border-t border-teal-50">
               <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 border rounded-full px-2 py-1.5 transition-all" style={{ borderColor: "#14B8A644" }}>
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything about clinic..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
                 <button type="submit" disabled={!input.trim() || isTyping} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors" style={{ background: input.trim() ? TEAL : "#14B8A622", color: input.trim() ? "white" : TEAL }}>
                   <Send size={16} className={input.trim() ? "ml-0.5" : ""} />
                 </button>
@@ -110,4 +120,4 @@ export default function AIAssistant() {
       )}
     </>
   );
-                                                  }
+}
