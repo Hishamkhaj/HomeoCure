@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Plus, X, Pencil, Trash2, Calendar, Camera, FileImage, Loader2, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
+import { Plus, X, Pencil, Trash2, Calendar, Camera, FileImage, Loader2, ArrowUpRight, ArrowDownRight, Calculator, PieChart } from "lucide-react";
 
 const inputClass = "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
 const inputStyle = { borderColor: "#14B8A655" };
@@ -46,7 +46,7 @@ function extractGrandTotal(text) {
 const emptyForm = { order_date: todayStr(), description: "", bill_amount: "", paid_amount: "" };
 export default function MRView() {
   const [mrs, setMrs] = useState([]);
-  const [activeMr, setActiveMr] = useState(null);
+  const [activeMr, setActiveMr] = useState("OVERVIEW");
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,8 +55,8 @@ export default function MRView() {
   const [confirmDeleteMr, setConfirmDeleteMr] = useState(null);
   const [newMrName, setNewMrName] = useState("");
 
-  const [formType, setFormType] = useState(null); // 'bill' or 'payment'
-  const [smartMode, setSmartMode] = useState(false); // toggle for auto-calculation
+  const [formType, setFormType] = useState(null);
+  const [smartMode, setSmartMode] = useState(false);
   const [editOrder, setEditOrder] = useState(null);
   const [orderForm, setOrderForm] = useState(emptyForm);
   const [confirmDeleteOrder, setConfirmDeleteOrder] = useState(null);
@@ -68,8 +68,8 @@ export default function MRView() {
   const [ocrText, setOcrText] = useState("");
   const [ocrDetected, setOcrDetected] = useState(null);
 
-  const mrTotalBill = orders.reduce((sum, o) => sum + (Number(o.bill_amount) || 0), 0);
-  const mrTotalPaid = orders.reduce((sum, o) => sum + (Number(o.paid_amount) || 0), 0);
+  const mrTotalBill = Math.round(orders.reduce((sum, o) => sum + (Number(o.bill_amount) || 0), 0));
+  const mrTotalPaid = Math.round(orders.reduce((sum, o) => sum + (Number(o.paid_amount) || 0), 0));
   const netPending = Math.max(0, mrTotalBill - mrTotalPaid);
 
   useEffect(() => { fetchAll(); }, []);
@@ -78,15 +78,16 @@ export default function MRView() {
     setLoading(true);
     const { data: mrList } = await supabase.from("mrs").select("*").order("created_at");
     setMrs(mrList || []);
-    if (mrList && mrList.length && !activeMr) {
-      setActiveMr(mrList[0].id);
-      await loadOrders(mrList[0].id);
-    }
+    await loadOrders("OVERVIEW");
     setLoading(false);
   }
 
   async function loadOrders(mrId) {
-    const { data } = await supabase.from("mr_orders").select("*").eq("mr_id", mrId).order("order_date", { ascending: true });
+    let query = supabase.from("mr_orders").select("*").order("order_date", { ascending: true });
+    if (mrId !== "OVERVIEW") {
+      query = query.eq("mr_id", mrId);
+    }
+    const { data } = await query;
     setOrders(data || []);
   }
 
@@ -118,7 +119,7 @@ export default function MRView() {
   async function deleteMr(mr) {
     await supabase.from("mrs").delete().eq("id", mr.id);
     setMrs((prev) => prev.filter((m) => m.id !== mr.id));
-    if (activeMr === mr.id) { setActiveMr(null); setOrders([]); }
+    if (activeMr === mr.id) { setActiveMr("OVERVIEW"); await loadOrders("OVERVIEW"); }
     setConfirmDeleteMr(null);
   }
 
@@ -183,7 +184,6 @@ export default function MRView() {
       billFilePath = path;
     }
 
-    // Smart Calculation Logic
     let finalBillAmt = 0;
     let finalPaidAmt = 0;
 
@@ -199,8 +199,8 @@ export default function MRView() {
       mr_id: activeMr,
       order_date: orderForm.order_date,
       description: orderForm.description,
-      bill_amount: finalBillAmt,
-      paid_amount: finalPaidAmt,
+      bill_amount: Math.round(finalBillAmt),
+      paid_amount: Math.round(finalPaidAmt),
       ...(billFile && formType === 'bill' ? { bill_file_path: billFilePath, ocr_grand_total: ocrDetected, ocr_raw_text: ocrText ? ocrText.slice(0, 3000) : null, bill_uploaded_at: new Date().toISOString() } : {}),
     };
 
@@ -219,22 +219,37 @@ export default function MRView() {
     await supabase.from("mr_orders").delete().eq("id", order.id);
     setOrders((prev) => prev.filter((o) => o.id !== order.id));
     setConfirmDeleteOrder(null);
-  }
+              }
     if (loading) return <p className="text-sm text-center py-10" style={{ color: "#0A5C5499" }}>Loading…</p>;
 
   const activeMrObj = mrs.find((m) => m.id === activeMr);
   
-  // Calculate running ledger
   let currentBalance = 0;
   const ledgerData = orders.map(o => {
     currentBalance += (Number(o.bill_amount) || 0) - (Number(o.paid_amount) || 0);
-    return { ...o, runningBalance: currentBalance };
-  }).reverse(); // Reverse for display (newest at top)
+    return { ...o, runningBalance: Math.round(currentBalance) };
+  }).reverse();
+
+  // Calculate Monthly Stats for Overview
+  const monthlyStats = {};
+  if (activeMr === "OVERVIEW") {
+    orders.forEach(o => {
+      const d = new Date(o.order_date);
+      const monthKey = `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`;
+      if (!monthlyStats[monthKey]) monthlyStats[monthKey] = { purchased: 0, paid: 0 };
+      monthlyStats[monthKey].purchased += (Number(o.bill_amount) || 0);
+      monthlyStats[monthKey].paid += (Number(o.paid_amount) || 0);
+    });
+  }
 
   return (
     <div>
-      {/* MR Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
+        <div className="shrink-0 flex items-center gap-1">
+          <button onClick={() => selectMr("OVERVIEW")} className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1.5" style={{ background: activeMr === "OVERVIEW" ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "#ffffff", color: activeMr === "OVERVIEW" ? "white" : "#0A5C54", border: activeMr === "OVERVIEW" ? "none" : "1px solid #14B8A655" }}>
+            <PieChart size={12}/> Overview
+          </button>
+        </div>
         {mrs.map((mr) => (
           <div key={mr.id} className="shrink-0 flex items-center gap-1">
             <button onClick={() => selectMr(mr.id)} className="px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: activeMr === mr.id ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "#ffffff", color: activeMr === mr.id ? "white" : "#0A5C54", border: activeMr === mr.id ? "none" : "1px solid #14B8A655" }}>
@@ -253,9 +268,8 @@ export default function MRView() {
 
       {mrs.length === 0 && <p className="text-sm text-center py-10" style={{ color: "#0A5C5466" }}>No MRs yet — tap "+" above to add one.</p>}
 
-      {activeMrObj && (
+      {(activeMrObj || activeMr === "OVERVIEW") && (
         <>
-          {/* Overview Cards */}
           <div className="grid grid-cols-3 gap-2 mb-4">
             <div className="bg-white rounded-xl p-3 shadow-sm text-center">
               <p className="text-[10px] mb-1 font-medium" style={{ color: "#0A5C5499" }}>Total Purchased</p>
@@ -271,64 +285,81 @@ export default function MRView() {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-2 mb-4">
-            <button onClick={() => openForm('bill')} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl border border-gray-200 bg-white" style={{ color: "#DC2626" }}>
-              <ArrowUpRight size={14} /> Add Bill
-            </button>
-            <button onClick={() => openForm('payment')} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #15803D, #166534)" }}>
-              <ArrowDownRight size={14} /> Record Payment
-            </button>
-          </div>
-
-          {/* Ledger List */}
-          <div className="space-y-2">
-            {ledgerData.map((item) => {
-              const isPayment = item.paid_amount > 0 && item.bill_amount === 0;
-              return (
-                <div key={item.id} className="bg-white rounded-xl p-3.5 shadow-sm border-l-4" style={{ borderColor: isPayment ? "#15803D" : "#DC2626" }}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 text-xs mb-0.5" style={{ color: "#0A5C5499" }}>
-                        <Calendar size={11} />
-                        {new Date(item.order_date + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                        <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: isPayment ? "#DCFCE7" : "#FEE2E2", color: isPayment ? "#15803D" : "#DC2626" }}>
-                          {isPayment ? "PAYMENT" : "BILL"}
-                        </span>
-                      </div>
-                      <p className="text-sm mt-1" style={{ color: "#0A5C54" }}>{item.description || (isPayment ? "Payment sent" : "Stock purchased")}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 opacity-60">
-                      <button onClick={() => openForm(isPayment ? 'payment' : 'bill', item)} style={{ color: "#148A7A" }}><Pencil size={14} /></button>
-                      <button onClick={() => setConfirmDeleteOrder(item)} style={{ color: "#DC2626" }}><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-end justify-between mt-2 pt-2 border-t" style={{ borderColor: "#F1F5F9" }}>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>{isPayment ? "Amount Paid" : "New Items Amount"}</p>
-                      <p className="text-base font-bold" style={{ color: isPayment ? "#15803D" : "#DC2626" }}>₹{isPayment ? item.paid_amount : item.bill_amount}</p>
-                    </div>
+          {activeMr === "OVERVIEW" ? (
+            <div className="mt-6">
+              <p className="text-xs font-bold mb-3" style={{ color: "#0A5C54" }}>Monthly Analytics (All MRs)</p>
+              <div className="space-y-2">
+                {Object.entries(monthlyStats).map(([month, stats]) => (
+                  <div key={month} className="bg-white p-3.5 rounded-xl shadow-sm flex items-center justify-between">
+                    <p className="text-sm font-bold" style={{ color: "#0A5C54" }}>{month}</p>
                     <div className="text-right">
-                      <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>Ledger Balance</p>
-                      <p className="text-sm font-bold" style={{ color: "#0A5C54" }}>₹{item.runningBalance}</p>
+                      <p className="text-xs" style={{ color: "#0A5C5499" }}>Purchased: <span className="font-bold" style={{ color: "#DC2626" }}>₹{Math.round(stats.purchased)}</span></p>
+                      <p className="text-xs" style={{ color: "#0A5C5499" }}>Paid: <span className="font-bold" style={{ color: "#15803D" }}>₹{Math.round(stats.paid)}</span></p>
                     </div>
                   </div>
+                ))}
+                {Object.keys(monthlyStats).length === 0 && <p className="text-center text-xs py-5" style={{ color: "#0A5C5499" }}>No data available yet.</p>}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2 mb-4">
+                <button onClick={() => openForm('bill')} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl border border-gray-200 bg-white" style={{ color: "#DC2626" }}>
+                  <ArrowUpRight size={14} /> Add Bill
+                </button>
+                <button onClick={() => openForm('payment')} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl text-white" style={{ background: "linear-gradient(135deg, #15803D, #166534)" }}>
+                  <ArrowDownRight size={14} /> Record Payment
+                </button>
+              </div>
 
-                  {item.bill_file_path && !isPayment && (
-                    <button onClick={() => viewBill(item.bill_file_path)} className="flex items-center gap-1 text-xs font-medium mt-3 px-3 py-1.5 bg-gray-50 rounded-lg w-max" style={{ color: "#148A7A" }}>
-                      <FileImage size={12} /> View Bill Photo
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            {ledgerData.length === 0 && <p className="text-center text-sm py-8" style={{ color: "#0A5C5466" }}>No ledger entries yet.</p>}
-          </div>
+              <div className="space-y-2">
+                {ledgerData.map((item) => {
+                  const isPayment = item.paid_amount > 0 && item.bill_amount === 0;
+                  return (
+                    <div key={item.id} className="bg-white rounded-xl p-3.5 shadow-sm border-l-4" style={{ borderColor: isPayment ? "#15803D" : "#DC2626" }}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-xs mb-0.5" style={{ color: "#0A5C5499" }}>
+                            <Calendar size={11} />
+                            {new Date(item.order_date + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: isPayment ? "#DCFCE7" : "#FEE2E2", color: isPayment ? "#15803D" : "#DC2626" }}>
+                              {isPayment ? "PAYMENT" : "BILL"}
+                            </span>
+                          </div>
+                          <p className="text-sm mt-1" style={{ color: "#0A5C54" }}>{item.description || (isPayment ? "Payment sent" : "Stock purchased")}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 opacity-60">
+                          <button onClick={() => openForm(isPayment ? 'payment' : 'bill', item)} style={{ color: "#148A7A" }}><Pencil size={14} /></button>
+                          <button onClick={() => setConfirmDeleteOrder(item)} style={{ color: "#DC2626" }}><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-end justify-between mt-2 pt-2 border-t" style={{ borderColor: "#F1F5F9" }}>
+                        <div>
+                          <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>{isPayment ? "Amount Paid" : "New Items Amount"}</p>
+                          <p className="text-base font-bold" style={{ color: isPayment ? "#15803D" : "#DC2626" }}>₹{isPayment ? item.paid_amount : item.bill_amount}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>Ledger Balance</p>
+                          <p className="text-sm font-bold" style={{ color: "#0A5C54" }}>₹{item.runningBalance}</p>
+                        </div>
+                      </div>
+
+                      {item.bill_file_path && !isPayment && (
+                        <button onClick={() => viewBill(item.bill_file_path)} className="flex items-center gap-1 text-xs font-medium mt-3 px-3 py-1.5 bg-gray-50 rounded-lg w-max" style={{ color: "#148A7A" }}>
+                          <FileImage size={12} /> View Bill Photo
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {ledgerData.length === 0 && <p className="text-center text-sm py-8" style={{ color: "#0A5C5466" }}>No ledger entries yet.</p>}
+              </div>
+            </>
+          )}
         </>
       )}
-            {/* Add / Edit MR Modals */}
-      {showAddMr && (
+            {showAddMr && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setShowAddMr(false)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
@@ -360,7 +391,6 @@ export default function MRView() {
         </div>
       )}
 
-      {/* Delete Modals */}
       {confirmDeleteMr && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmDeleteMr(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -373,6 +403,7 @@ export default function MRView() {
           </div>
         </div>
       )}
+
       {confirmDeleteOrder && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmDeleteOrder(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -386,7 +417,6 @@ export default function MRView() {
         </div>
       )}
 
-      {/* Smart Transaction Modal (Bill or Payment) */}
       {formType && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setFormType(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -407,7 +437,8 @@ export default function MRView() {
                 <div>
                   <label className={labelClass} style={labelStyle}>Bill Photo / Slip (Optional)</label>
                   <label className="w-full border-2 border-dashed rounded-xl px-3 py-4 flex flex-col items-center justify-center gap-1.5 cursor-pointer" style={{ borderColor: "#14B8A655" }}>
-                    <input type="file" accept="image/*" capture="environment" onChange={handleBillFile} className="hidden" />
+                    {/* Yahan se capture="environment" hata diya gaya hai taaki Gallery ka option aaye */}
+                    <input type="file" accept="image/*" onChange={handleBillFile} className="hidden" />
                     {billPreview ? <img src={billPreview} alt="Bill preview" className="max-h-32 rounded-lg object-contain" /> : (
                       <>
                         <Camera size={20} color="#148A7A" />
@@ -432,7 +463,6 @@ export default function MRView() {
                 />
               </div>
 
-              {/* The "Smart Calculator" Toggle */}
               {!editOrder && netPending > 0 && (
                 <div className="mt-3 p-3 rounded-xl bg-gray-50 border border-teal-100 relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-teal-500"></div>
@@ -453,8 +483,8 @@ export default function MRView() {
                       <span className="text-[10px] font-bold" style={{ color: "#148A7A" }}><Calculator size={10} className="inline mr-1"/> Auto-calculated:</span>
                       <span className="text-sm font-black" style={{ color: "#0A5C54" }}>
                         ₹{formType === 'bill' 
-                          ? Math.max(0, (Number(orderForm.bill_amount) || 0) - netPending)
-                          : Math.max(0, netPending - (Number(orderForm.paid_amount) || 0))}
+                          ? Math.round(Math.max(0, (Number(orderForm.bill_amount) || 0) - netPending))
+                          : Math.round(Math.max(0, netPending - (Number(orderForm.paid_amount) || 0)))}
                       </span>
                     </div>
                   )}
