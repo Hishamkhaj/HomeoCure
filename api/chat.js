@@ -9,23 +9,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // API के बताए गए लेटेस्ट मॉडल का नाम: gemini-3.8-flash
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
+    // AI की परमानेंट ट्रेनिंग (System Instruction)
+    const systemInstruction = `तुम डॉ. हिशाम खान के क्लिनिक 'Apna Homeo Hall' (HomeoCure) के स्मार्ट AI असिस्टेंट हो। तुम्हारा काम बहुत ही कम शब्दों में, सटीक और इज़्ज़त के साथ हिंदी (Hinglish) में जवाब देना है। तुम एक प्रोफेशनल क्लिनिक मैनेजर की तरह बर्ताव करोगे।`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemInstruction }] },
         contents: [{ parts: [{ text: message || "Hi" }] }]
       })
     });
 
     const data = await response.json();
     
-    // अगर Google की तरफ से कोई एरर आता है
     if (data.error) {
        return res.status(200).json({ reply: "API Error: " + data.error.message });
     }
 
-    // जवाब को सुरक्षित तरीके से पढ़ना
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (reply) {
