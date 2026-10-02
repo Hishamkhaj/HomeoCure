@@ -30,9 +30,21 @@ function visitTime(visit) {
   return toMs(visit?.ts || visit?.date);
 }
 
+// SMART LOGIC: Ignore "Same" and find the actual most recent disease
 function getComplaint(patient) {
-  const v = latestVisit(patient);
-  return v?.category || v?.complaint || "Uncategorized";
+  const visits = [...(patient?.visits || [])].sort((a, b) => visitTime(b) - visitTime(a)); // Newest first
+  
+  for (let i = 0; i < visits.length; i++) {
+    const text = (visits[i].category || visits[i].complaint || "").trim();
+    const lower = text.toLowerCase();
+    
+    // Skip empty strings and "same" variations
+    if (text && lower !== "same" && lower !== "same " && lower !== "same as before") {
+      // Capitalize first letter for neatness
+      return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+  }
+  return "Uncategorized";
 }
 
 function getDueInfo(patient, nowMs) {
@@ -59,17 +71,15 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
   const [activeTab, setActiveTab] = useState("monthly"); 
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [expandedList, setExpandedList] = useState(null); // format: { title: "...", data: [] }
+  const [expandedList, setExpandedList] = useState(null);
   
   const now = new Date();
   const [currentViewDate, setCurrentViewDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
   const [pickerYear, setPickerYear] = useState(now.getFullYear());
   const nowMs = now.getTime();
 
-  // Deduplicate helper
   const getUnique = (arr) => [...new Map(arr.map(item => [item.id, item])).values()];
 
-  // --- LIFETIME STATS (Arrays instead of just counts) ---
   const lifetime = useMemo(() => {
     let open = []; let closed = []; let lost = [];
     patients.forEach(p => {
@@ -84,20 +94,14 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
     return { all: patients, open, closed, lost, returnRate, lostRate, total };
   }, [patients]);
 
-  // --- DEEP MONTHLY STATS (Arrays) ---
   const monthly = useMemo(() => {
     const monthStart = currentViewDate.getTime();
     const nextMonth = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + 1, 1);
     const monthEnd = nextMonth.getTime();
 
-    let newPatients = [];
-    let sameMonthReturns = [];
-    let oldReturns = [];
+    let newPatients = []; let sameMonthReturns = []; let oldReturns = [];
     let totalRevenue = 0;
-    
-    let closedThisMonth = [];
-    let lostThisMonth = [];
-    let overdueThisMonth = [];
+    let closedThisMonth = []; let lostThisMonth = []; let overdueThisMonth = [];
 
     patients.forEach(p => {
       const visits = p.visits || [];
@@ -110,10 +114,8 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
         const vMs = visitTime(v);
         if (vMs >= monthStart && vMs < monthEnd) {
           totalRevenue += (Number(v.paid_amount) || Number(v.cost) || 0);
-          
-          if (vMs === fVisitMs) {
-            newPatients.push(p);
-          } else {
+          if (vMs === fVisitMs) newPatients.push(p);
+          else {
             if (fVisitMs >= monthStart && fVisitMs < monthEnd) sameMonthReturns.push(p);
             else oldReturns.push(p);
           }
@@ -133,28 +135,22 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
 
     return { 
       totalVisitsCount: getUnique(newPatients).length + getUnique(sameMonthReturns).length + getUnique(oldReturns).length, 
-      newPatients: getUnique(newPatients), 
-      sameMonthReturns: getUnique(sameMonthReturns), 
-      oldReturns: getUnique(oldReturns), 
-      revenue: totalRevenue,
-      closedThisMonth: getUnique(closedThisMonth), 
-      lostThisMonth: getUnique(lostThisMonth), 
-      overdueThisMonth: getUnique(overdueThisMonth)
+      newPatients: getUnique(newPatients), sameMonthReturns: getUnique(sameMonthReturns), oldReturns: getUnique(oldReturns), 
+      revenue: totalRevenue, closedThisMonth: getUnique(closedThisMonth), lostThisMonth: getUnique(lostThisMonth), overdueThisMonth: getUnique(overdueThisMonth)
     };
   }, [patients, currentViewDate, nowMs]);
-    // --- CATEGORY STATS ---
-  const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
+    const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
     const map = {};
     patients.forEach(p => {
       if (!p.visits?.length) return;
-      const cat = getComplaint(p) || "Other";
+      const cat = getComplaint(p); 
       if (!map[cat]) map[cat] = { name: cat, total: 0, open: 0, closed: 0, lost: 0, patientList: [] };
       
       map[cat].total++;
       if (p.status === "closed") map[cat].closed++;
       else if (p.status === "lost") map[cat].lost++;
       else map[cat].open++;
-      map[cat].patientList.push({ ...p });
+      map[cat].patientList.push(p); // Saving full patient object for clicking
     });
     
     const sorted = Object.values(map).sort((a, b) => b.total - a.total);
@@ -176,7 +172,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
   const selectMonth = (monthIdx) => {
     setCurrentViewDate(new Date(pickerYear, monthIdx, 1));
     setShowMonthPicker(false);
-    setExpandedList(null); // Reset list when month changes
+    setExpandedList(null); 
   };
 
   const handleTabChange = (tab) => {
@@ -201,7 +197,6 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
       {/* ---------------- TAB 1: OVERVIEW & MONTHLY ---------------- */}
       {activeTab === "monthly" && (
         <div className="space-y-4">
-          
           <div className="grid grid-cols-4 gap-2">
             <MiniStat label="Lifetime" value={lifetime.total} color="#0A5C54" onClick={() => toggleList("All Patients (Lifetime)", lifetime.all)} isActive={expandedList?.title === "All Patients (Lifetime)"} />
             <MiniStat label="Active" value={lifetime.open.length} color="#B45309" onClick={() => toggleList("Active Patients", lifetime.open)} isActive={expandedList?.title === "Active Patients"} />
@@ -219,7 +214,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <p className="text-lg font-bold" style={{ color: "#DC2626" }}>{lifetime.lostRate}%</p>
              </div>
           </div>
-                  {/* DEEP MONTHLY CARD */}
+                    {/* DEEP MONTHLY CARD */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden border relative" style={{ borderColor: "#14B8A622" }}>
             <div className="flex items-center justify-between p-3.5 border-b" style={{ borderColor: "#14B8A61A", background: "#F4FAF9" }}>
               <button onClick={() => setShowMonthPicker(true)} className="flex items-center gap-2 font-bold text-sm px-3 py-1.5 rounded-lg bg-white shadow-sm border" style={{ color: "#0A5C54", borderColor: "#14B8A622" }}>
@@ -247,19 +242,19 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
               </div>
 
               <div className="flex gap-2 p-2 rounded-xl bg-gray-50 border border-gray-100 justify-around text-center">
-                <button onClick={() => toggleList("Closed This Month", monthly.closedThisMonth)} className={`flex-1 p-2 rounded-lg ${expandedList?.title === "Closed This Month" ? 'bg-white shadow-sm' : ''}`}>
+                <button onClick={() => toggleList("Closed This Month", monthly.closedThisMonth)} className={`flex-1 p-2 rounded-lg outline-none ${expandedList?.title === "Closed This Month" ? 'bg-white shadow-sm' : ''}`}>
                   <p className="text-[10px] text-gray-500 font-semibold uppercase">Closed</p>
                   <p className="text-sm font-bold text-green-700">{monthly.closedThisMonth.length}</p>
                 </button>
                 <div className="w-px bg-gray-200 my-2"></div>
-                <button onClick={() => toggleList("Lost This Month", monthly.lostThisMonth)} className={`flex-1 p-2 rounded-lg ${expandedList?.title === "Lost This Month" ? 'bg-white shadow-sm' : ''}`}>
+                <button onClick={() => toggleList("Lost This Month", monthly.lostThisMonth)} className={`flex-1 p-2 rounded-lg outline-none ${expandedList?.title === "Lost This Month" ? 'bg-white shadow-sm' : ''}`}>
                   <p className="text-[10px] text-gray-500 font-semibold uppercase">Lost</p>
                   <p className="text-sm font-bold text-red-600">{monthly.lostThisMonth.length}</p>
                 </button>
               </div>
             </div>
             
-            {/* INLINE LIST VIEWER */}
+            {/* INLINE LIST VIEWER - Properly Clickable */}
             {expandedList && (
               <div className="bg-gray-50 border-t" style={{ borderColor: "#14B8A633" }}>
                 <div className="p-3 bg-gray-100 flex items-center justify-between">
@@ -268,13 +263,13 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 </div>
                 <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
                   {expandedList.data.map(pt => (
-                    <div key={pt.id} onClick={() => onSelect?.(pt)} className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-gray-200 shadow-sm cursor-pointer active:bg-gray-50">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-800 truncate">{pt.name}</p>
-                        <p className="text-[9px] text-gray-500 truncate mt-0.5">{getComplaint(pt)} {pt.contact && `· ${pt.contact}`}</p>
+                    <button key={pt.id} onClick={() => onSelect?.(pt)} className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:scale-[0.98] transition-transform">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
+                        <p className="text-[10px] text-gray-500 truncate mt-0.5">{getComplaint(pt)} {pt.contact && `· ${pt.contact}`}</p>
                       </div>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
-                    </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
+                    </button>
                   ))}
                   {expandedList.data.length === 0 && <p className="text-[11px] text-center py-4 text-gray-400">No patients in this list.</p>}
                 </div>
@@ -328,16 +323,18 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <span style={{ color: "#B45309" }}>{cat.open} Active</span>
                 <span style={{ color: "#DC2626" }}>{cat.lost} Lost</span>
               </div>
+              
+              {/* Clickable Disease Patient List */}
               {expandedCategory === cat.name && (
                 <div className="mt-3 pt-3 border-t border-dashed space-y-2 max-h-48 overflow-y-auto" style={{ borderColor: "#14B8A633" }}>
                   {cat.patientList.map(pt => (
-                    <div key={pt.id} onClick={() => onSelect?.(pt)} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100 cursor-pointer active:bg-gray-100">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-800 truncate">{pt.name}</p>
-                        {pt.contact && <p className="text-[9px] text-gray-500">{pt.contact}</p>}
+                    <button key={pt.id} onClick={() => onSelect?.(pt)} className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:scale-[0.98] transition-transform">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
+                        {pt.contact && <p className="text-[10px] text-gray-500 mt-0.5">{pt.contact}</p>}
                       </div>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
-                    </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -346,7 +343,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
         </div>
       )}
 
-      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) ---------------- */}
+      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) Clickable ---------------- */}
       {activeTab === "action" && (
         <div className="space-y-3">
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex items-start gap-2 mb-2">
@@ -354,10 +351,10 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
              <p className="text-xs text-red-800">Medicine finished, haven't returned. Call them or mark "Lost".</p>
           </div>
           {actionList.map(({ patient, dueInfo }) => (
-            <button key={patient.id} onClick={() => onSelect?.(patient)} className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between" style={{ borderColor: "#14B8A61A" }}>
+            <button key={patient.id} onClick={() => onSelect?.(patient)} className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:scale-[0.98] transition-transform" style={{ borderColor: "#14B8A61A" }}>
               <div className="min-w-0">
                 <p className="text-sm font-bold truncate" style={{ color: "#0A5C54" }}>{patient.name}</p>
-                <p className="text-[10px] text-gray-500 truncate mb-1.5">{getComplaint(patient)}</p>
+                <p className="text-[11px] text-gray-500 truncate mb-1.5">{getComplaint(patient)}</p>
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-red-700 bg-red-100 uppercase tracking-wide">{dueInfo.days} days overdue</span>
                   {patient.contact && <span className="text-[10px] flex items-center gap-0.5 font-medium text-teal-700"><Phone size={10} /> {patient.contact}</span>}
@@ -393,7 +390,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
 // --- HELPER COMPONENTS ---
 function TabButton({ active, onClick, icon, label, badge }) {
   return (
-    <button onClick={onClick} className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl transition relative`} style={{ background: active ? "#148A7A" : "transparent", color: active ? "white" : "#0A5C5499" }}>
+    <button onClick={onClick} className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl transition relative outline-none`} style={{ background: active ? "#148A7A" : "transparent", color: active ? "white" : "#0A5C5499" }}>
       <div className="flex items-center gap-1.5">{icon}<span className="text-[11px] font-bold">{label}</span></div>
       {badge > 0 && <span className="absolute top-1 right-2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black" style={{ background: active ? "#DC2626" : "#FEE2E2", color: active ? "white" : "#DC2626" }}>{badge}</span>}
     </button>
@@ -402,7 +399,7 @@ function TabButton({ active, onClick, icon, label, badge }) {
 
 function MiniStat({ label, value, color, onClick, isActive }) {
   return (
-    <button onClick={onClick} className={`bg-white p-2 rounded-xl shadow-sm border text-center flex flex-col justify-center transition ${isActive ? 'ring-2 ring-teal-500 bg-teal-50' : ''}`} style={{ borderColor: "#14B8A61A" }}>
+    <button onClick={onClick} className={`bg-white p-2 rounded-xl shadow-sm border text-center flex flex-col justify-center transition outline-none ${isActive ? 'ring-2 ring-teal-500 bg-teal-50' : 'active:bg-gray-50'}`} style={{ borderColor: "#14B8A61A" }}>
       <p className="text-xl font-black" style={{ color }}>{value}</p>
       <p className="text-[9px] font-semibold uppercase text-gray-500 mt-0.5">{label}</p>
     </button>
@@ -411,7 +408,7 @@ function MiniStat({ label, value, color, onClick, isActive }) {
 
 function StatDetail({ label, value, color, help, onClick, isActive }) {
   return (
-    <button onClick={onClick} className={`text-left p-2 rounded-xl transition border ${isActive ? 'border-teal-400 bg-teal-50' : 'border-transparent active:bg-gray-50'}`}>
+    <button onClick={onClick} className={`text-left p-2 rounded-xl transition border outline-none ${isActive ? 'border-teal-400 bg-teal-50' : 'border-transparent active:bg-gray-50'}`}>
       <p className="text-[10px] text-gray-500 font-semibold uppercase">{label}</p>
       <p className="text-xl font-black" style={{ color }}>{value}</p>
       {help && <p className="text-[9px] text-gray-400 mt-0.5">{help}</p>}
