@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabaseClient";
-import { ArrowLeft, Plus, CheckCircle, RotateCcw, Calendar, Pill, IndianRupee, Pencil, Calculator as CalcIcon, Activity } from "lucide-react";
+import { ArrowLeft, Plus, CheckCircle, RotateCcw, Calendar, Pill, IndianRupee, Pencil, Calculator as CalcIcon } from "lucide-react";
 import MedicineSelector from "./MedicineSelector";
 import Calculator from "./Calculator";
 import PackagePicker from "./PackagePicker";
@@ -25,9 +25,17 @@ function formatDate(ts) {
 }
 
 const emptyForm = {
-  date: todayStr(), category: "", complaint: "", medicineNote: "",
-  duration_days: "", cost: "", paid_amount: "", payment_mode: "cash", mr_commission: "",
+  date: todayStr(),
+  category: "", 
+  complaint: "",
+  medicineNote: "",
+  duration_days: "",
+  cost: "",
+  paid_amount: "",
+  payment_mode: "cash",
+  mr_commission: "",
 };
+
 export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit, onToggleStatus, onMarkLost, onReactivate }) {
   const [showForm, setShowForm] = useState(false);
   const [editingVisit, setEditingVisit] = useState(null); 
@@ -40,7 +48,14 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
   const [confirmLost, setConfirmLost] = useState(false);
   const priceMapRef = useRef({});
 
-  const uniqueCategories = [...new Set((patient.visits || []).map(v => v.category).filter(Boolean))].sort();
+  // CRASH-PROOF CATEGORY EXTRACTOR
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set();
+    (patient.visits || []).forEach(v => {
+      if (v.category) cats.add(v.category);
+    });
+    return Array.from(cats).sort();
+  }, [patient]);
 
   useEffect(() => {
     (async () => {
@@ -105,9 +120,7 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
     e.preventDefault();
     setSaving(true);
     const payload = { ...form };
-    if (!payload.complaint) {
-      payload.complaint = payload.category || "General Visit";
-    }
+    if (!payload.complaint) payload.complaint = payload.category || "General Visit";
 
     if (editingVisit) {
       await onEditVisit(editingVisit, { ...payload, medicines });
@@ -119,7 +132,8 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
   };
 
   const isLost = patient.status === "lost";
-        return (
+
+  return (
     <div>
       <button onClick={onBack} className="flex items-center gap-1.5 text-sm mb-4" style={{ color: "#148A7A" }}><ArrowLeft size={16} /> Back</button>
 
@@ -197,7 +211,8 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
           );
         })}
       </div>
-            {showForm && (
+
+      {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold font-serif mb-4" style={{ color: "#0A5C54" }}>{editingVisit ? "Edit Visit" : "New Visit"}</h3>
@@ -287,6 +302,14 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
                 </select>
               </div>
               
+              <div>
+                <label className={labelClass} style={labelStyle}>MR commission (₹, optional)</label>
+                <div className="flex gap-1.5">
+                  <input type="number" value={form.mr_commission} onChange={update("mr_commission")} className={inputClass} style={inputStyle} />
+                  <button type="button" onClick={() => setCalcField("mr_commission")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}><CalcIcon size={16} /></button>
+                </div>
+              </div>
+              
               <button type="submit" disabled={saving} className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-4 disabled:opacity-60" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 {saving ? "Saving…" : editingVisit ? "Save changes" : "Save visit"}
               </button>
@@ -296,8 +319,21 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
       )}
 
       {calcField && (
-        <Calculator label={calcField === "cost" ? "Total cost" : "Amount paid"} initialValue={form[calcField]} onClose={() => setCalcField(null)} onUse={(val) => { setForm((f) => ({ ...f, [calcField]: val })); setCalcField(null); }} />
+        <Calculator label={calcField === "cost" ? "Total cost" : calcField === "paid_amount" ? "Amount paid" : "MR commission"} initialValue={form[calcField]} onClose={() => setCalcField(null)} onUse={(val) => { setForm((f) => ({ ...f, [calcField]: val })); setCalcField(null); }} />
+      )}
+
+      {confirmLost && (
+        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmLost(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Mark as lost?</h3>
+            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>This marks <strong>{patient.name}</strong> as not returning. They'll be excluded from follow-up reminders, and counted in the monthly report. You can reactivate them anytime if they come back.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmLost(false)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>Cancel</button>
+              <button onClick={() => { onMarkLost(); setConfirmLost(false); }} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: "#6B7280" }}>Mark as Lost</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
-}
+                      }
