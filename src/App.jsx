@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
+import SplashScreen from "./components/SplashScreen";
 import PinLock, { INCOME_PIN } from "./components/PinLock";
 import PatientList from "./components/PatientList";
 import AddPatient from "./components/AddPatient";
@@ -32,7 +33,8 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [tab, setTab] = useState("today");
   const [showMore, setShowMore] = useState(false);
-  const [returnTab, setReturnTab] = useState(null); // <-- Yahan Memory Add ki hai
+  const [returnTab, setReturnTab] = useState(null); 
+  const [showSplash, setShowSplash] = useState(true); // <-- Splash Screen State Added
 
   useEffect(() => { if (unlocked) fetchPatients(); }, [unlocked]);
 
@@ -61,7 +63,8 @@ export default function App() {
     const ids = new Set(toMark.map(p=>p.id));
     return list.map(p=>ids.has(p.id)?{...p,status:"lost",lost_at:lostAt}:p);
   }
-    async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
+
+  async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
     if (!medicines?.length) return;
     for (const m of medicines) {
       if (m.ml) {
@@ -80,9 +83,8 @@ export default function App() {
     const cost = form.cost ? Number(form.cost) : 0;
     const paidAmount = form.paid_amount !== "" && form.paid_amount != null ? Number(form.paid_amount) : cost;
     return { ts:dateStrToTs(form.date), complaint:form.complaint, medicines:form.medicines||[], medicineNote:form.medicineNote||"", duration_days:form.duration_days?Number(form.duration_days):null, cost, paid_amount:paidAmount, payment_mode:form.payment_mode, mr_commission:form.mr_commission?Number(form.mr_commission):0, payment_log:paidAmount>0?[{date:form.date,amount:paidAmount,mode:form.payment_mode||"cash"}]:[] };
-  }
-
-  async function handleAddPatient(form) {
+          }
+    async function handleAddPatient(form) {
     const firstVisit=buildVisit(form);
     const {data,error}=await supabase.from("patients").insert({name:form.name,contact:form.contact,status:"open",visits:[firstVisit]}).select().single();
     if(!error){await syncPharmacyForMedicines(firstVisit.medicines,data.id,form.date);setShowAdd(false);fetchPatients();}
@@ -97,11 +99,14 @@ export default function App() {
   async function handleReactivate(){const {error}=await supabase.from("patients").update({status:"open",lost_at:null}).eq("id",selected.id);if(!error){const u={...selected,status:"open",lost_at:null};setSelected(u);setPatients(p=>p.map(x=>x.id===u.id?u:x));}}
   
   function goToPatientFromFollowUp(p){
-    setReturnTab(tab); // <-- FIX: Taps pe tab memory me save ho jayega
+    setReturnTab(tab); 
     setTab("patients");
     setSelected(p);
-            }
-    if(!unlocked)return <PinLock onUnlock={()=>setUnlocked(true)}/>;
+  }
+    // <-- Splash Screen Logic Applied Here -->
+  if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />;
+
   const overdueCount=patients.filter(p=>{if(p.status!=="open")return false;const v=[...(p.visits||[])].sort((a,b)=>b.ts-a.ts)[0];if(!v?.duration_days)return false;return Date.now()>=v.ts+Number(v.duration_days)*86400000}).length;
   const MORE_ITEMS=[
     {key:"followup",label:"Follow-up",icon:Calendar,color:"#F59E0B",badge:overdueCount},
@@ -120,7 +125,6 @@ export default function App() {
       {tab==="today"&&<TodayView patients={patients} onSelect={goToPatientFromFollowUp} onNavigate={setTab}/>} 
       {tab==="intelligence"&&<IntelligenceView onBack={()=>setTab("today")}/>} 
       
-      {/* BACK FIX IS HERE 👇 */}
       {tab==="patients"&&(selected?<PatientDetail patient={selected} onBack={()=>{
           setSelected(null);
           if(returnTab){
@@ -145,6 +149,5 @@ export default function App() {
     {showAdd&&<AddPatient onClose={()=>setShowAdd(false)} onSave={handleAddPatient} patients={patients} onViewExisting={p=>{setShowAdd(false);setTab("patients");setSelected(p)}}/>}
     {showAbout&&<AboutModal onClose={()=>setShowAbout(false)}/>} 
   </div>;
-}
-
-  
+      }
+    
