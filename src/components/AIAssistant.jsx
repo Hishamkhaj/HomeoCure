@@ -1,0 +1,102 @@
+import React, { useState, useRef, useEffect } from "react";
+import { Sparkles, X, Send, Bot } from "lucide-react";
+
+const TEAL = "#0A5C54";
+const TEAL2 = "#148A7A";
+
+export default function AIAssistant() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      text: "Hello Dr. Hisham! ✨ मैं आपका HomeoCure AI असिस्टेंट हूँ। आज मैं क्लिनिक और फार्मेसी में आपकी क्या मदद कर सकता हूँ?",
+    },
+  ]);
+  
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isTyping]);
+
+  const handleSend = (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userText = input.trim();
+    setMessages((prev) => [...prev, { role: "user", text: userText }]);
+    setInput("");
+    setIsTyping(true);
+
+    setTimeout(() => {
+      setIsTyping(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `मैंने आपकी कमांड: "${userText}" नोट कर ली है। बैकएंड (API) जुड़ने के बाद मैं इस एक्शन को सीधे आपके डेटाबेस में प्रोसेस कर दूंगा! 🚀`,
+        },
+      ]);
+    }, 1500);
+  };
+    return (
+    <>
+      {!isOpen && (
+        <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform duration-300 hover:scale-105" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
+          <Sparkles className="animate-pulse" size={24}/>
+        </button>
+      )}
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/20 backdrop-blur-sm transition-opacity">
+          <div className="w-full max-w-sm h-[80vh] sm:h-[600px] bg-white rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 flex items-center justify-between text-white shadow-md z-10" style={{ background: "linear-gradient(135deg, #0A5C54, #148A7A)" }}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30"><Sparkles size={16}/></div>
+                <div>
+                  <h3 className="text-sm font-bold font-serif leading-tight">HomeoCure AI</h3>
+                  <p className="text-[10px] opacity-80">Online & Ready</p>
+                </div>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition"><X size={20}/></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50" style={{ backgroundImage: 'radial-gradient(#14B8A611 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} items-end gap-2`}>
+                  {msg.role === "assistant" && <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mb-1" style={{ background: "#14B8A61A", color: TEAL }}><Bot size={12}/></div>}
+                  <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[80%] shadow-sm ${msg.role === "user" ? "rounded-br-sm text-white" : "rounded-bl-sm bg-white border border-teal-100"}`} style={msg.role === "user" ? { background: "linear-gradient(135deg, #148A7A, #0A5C54)" } : { color: TEAL }}>{msg.text}</div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="flex justify-start items-end gap-2">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mb-1" style={{ background: "#14B8A61A", color: TEAL }}><Bot size={12}/></div>
+                  <div className="px-4 py-3 rounded-2xl rounded-bl-sm bg-white border border-teal-100 shadow-sm flex items-center gap-1.5 text-teal-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="p-3 bg-white border-t border-teal-50">
+              <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 border rounded-full px-2 py-1.5 transition-all" style={{ borderColor: "#14B8A644" }}>
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask AI to do something..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
+                <button type="submit" disabled={!input.trim() || isTyping} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors" style={{ background: input.trim() ? TEAL : "#14B8A622", color: input.trim() ? "white" : TEAL }}>
+                  <Send size={16} className={input.trim() ? "ml-0.5" : ""} />
+                </button>
+              </form>
+              <p className="text-[9px] text-center mt-2 opacity-60" style={{ color: TEAL }}>HomeoCure AI is currently in beta.</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+                                                                                                           }
