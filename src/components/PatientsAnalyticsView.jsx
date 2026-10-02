@@ -32,15 +32,13 @@ function visitTime(visit) {
 
 // SMART LOGIC: Ignore "Same" and find the actual most recent disease
 function getComplaint(patient) {
-  const visits = [...(patient?.visits || [])].sort((a, b) => visitTime(b) - visitTime(a)); // Newest first
+  const visits = [...(patient?.visits || [])].sort((a, b) => visitTime(b) - visitTime(a));
   
   for (let i = 0; i < visits.length; i++) {
     const text = (visits[i].category || visits[i].complaint || "").trim();
     const lower = text.toLowerCase();
     
-    // Skip empty strings and "same" variations
     if (text && lower !== "same" && lower !== "same " && lower !== "same as before") {
-      // Capitalize first letter for neatness
       return text.charAt(0).toUpperCase() + text.slice(1);
     }
   }
@@ -139,7 +137,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
       revenue: totalRevenue, closedThisMonth: getUnique(closedThisMonth), lostThisMonth: getUnique(lostThisMonth), overdueThisMonth: getUnique(overdueThisMonth)
     };
   }, [patients, currentViewDate, nowMs]);
-    const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
+           const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
     const map = {};
     patients.forEach(p => {
       if (!p.visits?.length) return;
@@ -150,7 +148,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
       if (p.status === "closed") map[cat].closed++;
       else if (p.status === "lost") map[cat].lost++;
       else map[cat].open++;
-      map[cat].patientList.push(p); // Saving full patient object for clicking
+      map[cat].patientList.push(p); 
     });
     
     const sorted = Object.values(map).sort((a, b) => b.total - a.total);
@@ -214,7 +212,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <p className="text-lg font-bold" style={{ color: "#DC2626" }}>{lifetime.lostRate}%</p>
              </div>
           </div>
-                    {/* DEEP MONTHLY CARD */}
+                      {/* DEEP MONTHLY CARD */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden border relative" style={{ borderColor: "#14B8A622" }}>
             <div className="flex items-center justify-between p-3.5 border-b" style={{ borderColor: "#14B8A61A", background: "#F4FAF9" }}>
               <button onClick={() => setShowMonthPicker(true)} className="flex items-center gap-2 font-bold text-sm px-3 py-1.5 rounded-lg bg-white shadow-sm border" style={{ color: "#0A5C54", borderColor: "#14B8A622" }}>
@@ -254,7 +252,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
               </div>
             </div>
             
-            {/* INLINE LIST VIEWER - Properly Clickable */}
+            {/* INLINE LIST VIEWER - Properly Clickable FIX */}
             {expandedList && (
               <div className="bg-gray-50 border-t" style={{ borderColor: "#14B8A633" }}>
                 <div className="p-3 bg-gray-100 flex items-center justify-between">
@@ -263,7 +261,11 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 </div>
                 <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
                   {expandedList.data.map(pt => (
-                    <button key={pt.id} onClick={() => onSelect?.(pt)} className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:scale-[0.98] transition-transform">
+                    <button 
+                      key={pt.id} 
+                      onClick={(e) => { e.stopPropagation(); if(onSelect) onSelect(pt); }} 
+                      className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:scale-[0.98] transition-transform"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
                         <p className="text-[10px] text-gray-500 truncate mt-0.5">{getComplaint(pt)} {pt.contact && `· ${pt.contact}`}</p>
@@ -324,11 +326,15 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <span style={{ color: "#DC2626" }}>{cat.lost} Lost</span>
               </div>
               
-              {/* Clickable Disease Patient List */}
+              {/* Clickable Disease Patient List FIX */}
               {expandedCategory === cat.name && (
                 <div className="mt-3 pt-3 border-t border-dashed space-y-2 max-h-48 overflow-y-auto" style={{ borderColor: "#14B8A633" }}>
                   {cat.patientList.map(pt => (
-                    <button key={pt.id} onClick={() => onSelect?.(pt)} className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:scale-[0.98] transition-transform">
+                    <button 
+                      key={pt.id} 
+                      onClick={(e) => { e.stopPropagation(); if(onSelect) onSelect(pt); }} 
+                      className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:scale-[0.98] transition-transform"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
                         {pt.contact && <p className="text-[10px] text-gray-500 mt-0.5">{pt.contact}</p>}
@@ -343,7 +349,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
         </div>
       )}
 
-      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) Clickable ---------------- */}
+      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) Clickable FIX ---------------- */}
       {activeTab === "action" && (
         <div className="space-y-3">
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex items-start gap-2 mb-2">
@@ -351,7 +357,12 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
              <p className="text-xs text-red-800">Medicine finished, haven't returned. Call them or mark "Lost".</p>
           </div>
           {actionList.map(({ patient, dueInfo }) => (
-            <button key={patient.id} onClick={() => onSelect?.(patient)} className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:scale-[0.98] transition-transform" style={{ borderColor: "#14B8A61A" }}>
+            <button 
+              key={patient.id} 
+              onClick={(e) => { e.stopPropagation(); if(onSelect) onSelect(patient); }} 
+              className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:scale-[0.98] transition-transform" 
+              style={{ borderColor: "#14B8A61A" }}
+            >
               <div className="min-w-0">
                 <p className="text-sm font-bold truncate" style={{ color: "#0A5C54" }}>{patient.name}</p>
                 <p className="text-[11px] text-gray-500 truncate mb-1.5">{getComplaint(patient)}</p>
@@ -414,4 +425,5 @@ function StatDetail({ label, value, color, help, onClick, isActive }) {
       {help && <p className="text-[9px] text-gray-400 mt-0.5">{help}</p>}
     </button>
   );
-}
+                }
+        
