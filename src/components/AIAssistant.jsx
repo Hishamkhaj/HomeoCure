@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, X, Send, Bot } from "lucide-react";
+import { supabase } from "../supabaseClient"; // Tumhare project ka supabase client
 
 const TEAL = "#0A5C54";
 
@@ -10,7 +11,7 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "Hello Dr. Hisham! ✨ Apna Homeo Hall का AI असिस्टेंट तैयार है। बताइए, आज क्लिनिक में क्या मदद चाहिए?",
+      text: "Hello Dr. Hisham! ✨ Apna Homeo Hall ka AI असिस्टेंट तैयार है। बताइए, आज क्लिनिक में क्या देखना है?",
     },
   ]);
   
@@ -32,15 +33,21 @@ export default function AIAssistant() {
     setIsTyping(true);
 
     try {
-      // क्लिनिक का लाइव डेटा ऑटोमैटिक कैप्चर करना (लोकल स्टोरेज या बेसिक स्टेट से)
-      let clinicContext = "Apna Homeo Hall Clinic Dashboard Active.";
+      // Supabase se live data fetch karna taaki AI ko clinic ki poori khabar rahe
+      let clinicContext = "Apna Homeo Hall Clinic Live Data:\n";
       try {
-        const storedData = localStorage.getItem("homeocure_patients") || localStorage.getItem("clinic_data");
-        if (storedData) {
-          clinicContext += " Recent Data: " + storedData.slice(0, 300);
+        const { count: patientCount } = await supabase.from('patients').select('*', { count: 'exact', head: true });
+        const { data: payments } = await supabase.from('payments').select('amount, created_at');
+        
+        let totalCollection = 0;
+        if (payments) {
+          totalCollection = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         }
-      } catch (err) {
-        // इग्नोर अगर डेटा न मिले
+
+        clinicContext += `- Total Patients Registered: ${patientCount || 0}\n`;
+        clinicContext += `- Total Collection: ₹${totalCollection}\n`;
+      } catch (dbErr) {
+        clinicContext += "Database tables sync pending.";
       }
 
       const res = await fetch("/api/chat", {
@@ -81,7 +88,7 @@ export default function AIAssistant() {
                 <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30"><Sparkles size={16}/></div>
                 <div>
                   <h3 className="text-sm font-bold font-serif leading-tight">HomeoCure AI</h3>
-                  <p className="text-[10px] opacity-80">Apna Homeo Hall Manager</p>
+                  <p className="text-[10px] opacity-80">Connected to Supabase</p>
                 </div>
               </div>
               <button onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition"><X size={20}/></button>
@@ -109,7 +116,7 @@ export default function AIAssistant() {
 
             <div className="p-3 bg-white border-t border-teal-50">
               <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 border rounded-full px-2 py-1.5 transition-all" style={{ borderColor: "#14B8A644" }}>
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything about clinic..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask about patients, collections..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
                 <button type="submit" disabled={!input.trim() || isTyping} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors" style={{ background: input.trim() ? TEAL : "#14B8A622", color: input.trim() ? "white" : TEAL }}>
                   <Send size={16} className={input.trim() ? "ml-0.5" : ""} />
                 </button>
