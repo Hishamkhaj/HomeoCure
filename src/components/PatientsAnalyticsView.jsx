@@ -31,12 +31,12 @@ function visitTime(visit) {
 }
 
 function getComplaint(patient) {
-  const visits = [...(patient?.visits || [])].sort((a, b) => visitTime(b) - visitTime(a));
+  if (!patient?.visits || !patient.visits.length) return "Uncategorized";
+  const visits = [...patient.visits].sort((a, b) => visitTime(b) - visitTime(a));
   
   for (let i = 0; i < visits.length; i++) {
     const text = (visits[i].category || visits[i].complaint || "").trim();
     const lower = text.toLowerCase();
-    
     if (text && lower !== "same" && lower !== "same " && lower !== "same as before") {
       return text.charAt(0).toUpperCase() + text.slice(1);
     }
@@ -63,7 +63,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 function formatMonthYear(dateObj) {
   return dateObj.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-}
+    }
 export default function PatientsAnalyticsView({ patients = [], onSelect }) {
   const [activeTab, setActiveTab] = useState("monthly"); 
   const [expandedCategory, setExpandedCategory] = useState(null);
@@ -251,7 +251,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
               </div>
             </div>
             
-            {/* INLINE LIST VIEWER - BUG FIXED */}
+            {/* INLINE LIST VIEWER - BUG FULLY FIXED USING <div> */}
             {expandedList && (
               <div className="bg-gray-50 border-t" style={{ borderColor: "#14B8A633" }}>
                 <div className="p-3 bg-gray-100 flex items-center justify-between">
@@ -260,18 +260,17 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 </div>
                 <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
                   {expandedList.data.map(pt => (
-                    <button 
+                    <div 
                       key={pt.id} 
-                      type="button"
-                      onClick={() => { if(onSelect) onSelect(pt); }} 
-                      className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:bg-teal-50 transition-colors"
+                      onClick={() => onSelect(pt)} 
+                      className="w-full text-left flex items-center justify-between p-3 rounded-xl bg-white border border-gray-200 shadow-sm cursor-pointer active:bg-teal-50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
                         <p className="text-[10px] text-gray-500 truncate mt-0.5">{getComplaint(pt)} {pt.contact && `· ${pt.contact}`}</p>
                       </div>
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
-                    </button>
+                    </div>
                   ))}
                   {expandedList.data.length === 0 && <p className="text-[11px] text-center py-4 text-gray-400">No patients in this list.</p>}
                 </div>
@@ -326,22 +325,21 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <span style={{ color: "#DC2626" }}>{cat.lost} Lost</span>
               </div>
               
-              {/* Clickable Disease Patient List BUG FIXED */}
+              {/* Clickable Disease Patient List - BUG FULLY FIXED USING <div> */}
               {expandedCategory === cat.name && (
                 <div className="mt-3 pt-3 border-t border-dashed space-y-2 max-h-48 overflow-y-auto" style={{ borderColor: "#14B8A633" }}>
                   {cat.patientList.map(pt => (
-                    <button 
+                    <div 
                       key={pt.id} 
-                      type="button"
-                      onClick={() => { if(onSelect) onSelect(pt); }} 
-                      className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:bg-teal-50 transition-colors"
+                      onClick={() => onSelect(pt)} 
+                      className="w-full text-left flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100 cursor-pointer active:bg-teal-50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
                         {pt.contact && <p className="text-[10px] text-gray-500 mt-0.5">{pt.contact}</p>}
                       </div>
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -350,7 +348,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
         </div>
       )}
 
-      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) BUG FIXED ---------------- */}
+      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) BUG FULLY FIXED USING <div> ---------------- */}
       {activeTab === "action" && (
         <div className="space-y-3">
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex items-start gap-2 mb-2">
@@ -358,11 +356,10 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
              <p className="text-xs text-red-800">Medicine finished, haven't returned. Call them or mark "Lost".</p>
           </div>
           {actionList.map(({ patient, dueInfo }) => (
-            <button 
+            <div 
               key={patient.id} 
-              type="button"
-              onClick={() => { if(onSelect) onSelect(patient); }} 
-              className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:bg-teal-50 transition-colors" 
+              onClick={() => onSelect(patient)} 
+              className="w-full text-left bg-white rounded-xl p-4 shadow-sm border flex items-center justify-between cursor-pointer active:bg-teal-50 transition-colors" 
               style={{ borderColor: "#14B8A61A" }}
             >
               <div className="min-w-0">
@@ -374,7 +371,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 </div>
               </div>
               <ChevronRight size={16} className="text-gray-400 shrink-0" />
-            </button>
+            </div>
           ))}
         </div>
       )}
