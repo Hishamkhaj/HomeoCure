@@ -104,9 +104,9 @@ export default function App() {
     setSelected(p);
   }
     // <-- Splash Screen Logic Applied Here -->
+    if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />;
   if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
-  if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />;
-
+  
   const overdueCount=patients.filter(p=>{if(p.status!=="open")return false;const v=[...(p.visits||[])].sort((a,b)=>b.ts-a.ts)[0];if(!v?.duration_days)return false;return Date.now()>=v.ts+Number(v.duration_days)*86400000}).length;
   const MORE_ITEMS=[
     {key:"followup",label:"Follow-up",icon:Calendar,color:"#F59E0B",badge:overdueCount},
