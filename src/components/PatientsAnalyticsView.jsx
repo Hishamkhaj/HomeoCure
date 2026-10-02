@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import {
-  Activity, AlertCircle, ArrowLeft, CalendarClock, CheckCircle2, ChevronRight,
-  ChevronLeft, FileText, Phone, RotateCcw, Search, UserCheck, UserPlus, UserRound,
-  UserX, Users, XCircle, BarChart3, Pill
+  Activity, AlertCircle, ArrowLeft, CheckCircle2, ChevronRight,
+  ChevronLeft, Phone, Search, UserRound, Users, XCircle, 
+  BarChart3, Pill, Calendar as CalIcon, TrendingUp, TrendingDown, ChevronDown, ListFilter
 } from "lucide-react";
 
 const inputClass = "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
@@ -36,134 +36,177 @@ function getComplaint(patient) {
 }
 
 function getDueInfo(patient, nowMs) {
-  if (!patient || patient.status !== "open") return { overdue: false, days: 0 };
+  if (!patient || patient.status !== "open") return { overdue: false, days: 0, dueMs: 0 };
   const v = latestVisit(patient);
-  if (!v) return { overdue: false, days: 0 };
+  if (!v) return { overdue: false, days: 0, dueMs: 0 };
   const duration = Number(v.duration_days);
   const ts = visitTime(v);
-  if (!ts || !Number.isFinite(duration) || duration <= 0) return { overdue: false, days: 0 };
+  if (!ts || !Number.isFinite(duration) || duration <= 0) return { overdue: false, days: 0, dueMs: 0 };
   
   const dueMs = ts + duration * 24 * 60 * 60 * 1000;
   const diffDays = Math.floor((nowMs - dueMs) / (24 * 60 * 60 * 1000));
   
-  if (diffDays > 0) return { overdue: true, days: diffDays }; // Overdue
-  return { overdue: false, days: diffDays };
+  if (diffDays > 0) return { overdue: true, days: diffDays, dueMs };
+  return { overdue: false, days: diffDays, dueMs };
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function formatMonthYear(dateObj) {
   return dateObj.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-                                                                }
+}
 export default function PatientsAnalyticsView({ patients = [], onSelect }) {
-  const [activeTab, setActiveTab] = useState("monthly"); // 'monthly', 'categories', 'action'
-  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("monthly"); 
+  const [expandedCategory, setExpandedCategory] = useState(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [expandedList, setExpandedList] = useState(null); // format: { title: "...", data: [] }
   
   const now = new Date();
   const [currentViewDate, setCurrentViewDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
+  const [pickerYear, setPickerYear] = useState(now.getFullYear());
   const nowMs = now.getTime();
 
-  // --- LIFETIME STATS ---
+  // Deduplicate helper
+  const getUnique = (arr) => [...new Map(arr.map(item => [item.id, item])).values()];
+
+  // --- LIFETIME STATS (Arrays instead of just counts) ---
   const lifetime = useMemo(() => {
-    let total = patients.length;
-    let open = 0; let closed = 0; let lost = 0;
+    let open = []; let closed = []; let lost = [];
     patients.forEach(p => {
-      if (p.status === "closed") closed++;
-      else if (p.status === "lost") lost++;
-      else open++;
+      if (p.status === "closed") closed.push(p);
+      else if (p.status === "lost") lost.push(p);
+      else open.push(p);
     });
+    const total = patients.length;
     const returnRate = total > 0 ? Math.round((patients.filter(p => (p.visits?.length || 0) > 1).length / total) * 100) : 0;
-    const lostRate = total > 0 ? Math.round((lost / total) * 100) : 0;
+    const lostRate = total > 0 ? Math.round((lost.length / total) * 100) : 0;
     
-    return { total, open, closed, lost, returnRate, lostRate };
+    return { all: patients, open, closed, lost, returnRate, lostRate, total };
   }, [patients]);
 
-  // --- MONTHLY STATS LOGIC ---
+  // --- DEEP MONTHLY STATS (Arrays) ---
   const monthly = useMemo(() => {
     const monthStart = currentViewDate.getTime();
     const nextMonth = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + 1, 1);
     const monthEnd = nextMonth.getTime();
 
-    let newPatientsThisMonth = 0;
-    let followupsThisMonth = 0;
+    let newPatients = [];
+    let sameMonthReturns = [];
+    let oldReturns = [];
     let totalRevenue = 0;
+    
+    let closedThisMonth = [];
+    let lostThisMonth = [];
+    let overdueThisMonth = [];
 
     patients.forEach(p => {
       const visits = p.visits || [];
       if (!visits.length) return;
       
       const fVisitMs = visitTime(firstVisit(p));
-      
-      // Check every visit of this patient
+      const lVisitMs = visitTime(latestVisit(p));
+
       visits.forEach(v => {
         const vMs = visitTime(v);
         if (vMs >= monthStart && vMs < monthEnd) {
           totalRevenue += (Number(v.paid_amount) || Number(v.cost) || 0);
           
-          // Is this visit their first visit ever?
           if (vMs === fVisitMs) {
-            newPatientsThisMonth++;
+            newPatients.push(p);
           } else {
-            // It's a follow-up visit (could be originally from Aug, visiting in Sept)
-            followupsThisMonth++;
+            if (fVisitMs >= monthStart && fVisitMs < monthEnd) sameMonthReturns.push(p);
+            else oldReturns.push(p);
           }
         }
       });
+
+      if (lVisitMs >= monthStart && lVisitMs < monthEnd) {
+        if (p.status === "closed") closedThisMonth.push(p);
+        if (p.status === "lost") lostThisMonth.push(p);
+      }
+
+      const dueInfo = getDueInfo(p, nowMs);
+      if (p.status === "open" && dueInfo.overdue && dueInfo.dueMs >= monthStart && dueInfo.dueMs < monthEnd) {
+        overdueThisMonth.push(p);
+      }
     });
 
     return { 
-      totalVisits: newPatientsThisMonth + followupsThisMonth, 
-      newPatients: newPatientsThisMonth, 
-      followups: followupsThisMonth, 
-      revenue: totalRevenue 
+      totalVisitsCount: getUnique(newPatients).length + getUnique(sameMonthReturns).length + getUnique(oldReturns).length, 
+      newPatients: getUnique(newPatients), 
+      sameMonthReturns: getUnique(sameMonthReturns), 
+      oldReturns: getUnique(oldReturns), 
+      revenue: totalRevenue,
+      closedThisMonth: getUnique(closedThisMonth), 
+      lostThisMonth: getUnique(lostThisMonth), 
+      overdueThisMonth: getUnique(overdueThisMonth)
     };
-  }, [patients, currentViewDate]);
-
-  // --- CATEGORY STATS LOGIC ---
-  const categoryStats = useMemo(() => {
+  }, [patients, currentViewDate, nowMs]);
+    // --- CATEGORY STATS ---
+  const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
     const map = {};
     patients.forEach(p => {
       if (!p.visits?.length) return;
       const cat = getComplaint(p) || "Other";
-      if (!map[cat]) map[cat] = { name: cat, total: 0, open: 0, closed: 0, lost: 0 };
+      if (!map[cat]) map[cat] = { name: cat, total: 0, open: 0, closed: 0, lost: 0, patientList: [] };
       
       map[cat].total++;
       if (p.status === "closed") map[cat].closed++;
       else if (p.status === "lost") map[cat].lost++;
       else map[cat].open++;
+      map[cat].patientList.push({ ...p });
     });
-    return Object.values(map).sort((a, b) => b.total - a.total);
+    
+    const sorted = Object.values(map).sort((a, b) => b.total - a.total);
+    return {
+      categoryStats: sorted,
+      topCategory: sorted.length > 0 ? sorted[0] : null,
+      bottomCategory: sorted.length > 1 ? sorted[sorted.length - 1] : null
+    };
   }, [patients]);
 
-  // --- ACTION DESK (OVERDUE) LOGIC ---
   const actionList = useMemo(() => {
     return patients
       .filter(p => p.status === "open")
       .map(p => ({ patient: p, dueInfo: getDueInfo(p, nowMs) }))
       .filter(item => item.dueInfo.overdue)
-      .sort((a, b) => b.dueInfo.days - a.dueInfo.days); // Most overdue first
+      .sort((a, b) => b.dueInfo.days - a.dueInfo.days); 
   }, [patients, nowMs]);
 
-  // Handlers for month change
-  const prevMonth = () => setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() - 1, 1));
-  const nextMonth = () => setCurrentViewDate(new Date(currentViewDate.getFullYear(), currentViewDate.getMonth() + 1, 1));
-        return (
+  const selectMonth = (monthIdx) => {
+    setCurrentViewDate(new Date(pickerYear, monthIdx, 1));
+    setShowMonthPicker(false);
+    setExpandedList(null); // Reset list when month changes
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setExpandedList(null);
+  };
+
+  const toggleList = (title, data) => {
+    if (expandedList?.title === title) setExpandedList(null);
+    else setExpandedList({ title, data });
+  };
+
+  return (
     <div className="pb-8">
       {/* GLOBAL TABS */}
       <div className="flex bg-white p-1.5 rounded-2xl shadow-sm mb-5 border" style={{ borderColor: "#14B8A622" }}>
-        <TabButton active={activeTab === "monthly"} onClick={() => setActiveTab("monthly")} icon={<BarChart3 size={15} />} label="Overview" />
-        <TabButton active={activeTab === "categories"} onClick={() => setActiveTab("categories")} icon={<Pill size={15} />} label="Diseases" />
-        <TabButton active={activeTab === "action"} onClick={() => setActiveTab("action")} icon={<AlertCircle size={15} />} label="Overdue" badge={actionList.length} />
+        <TabButton active={activeTab === "monthly"} onClick={() => handleTabChange("monthly")} icon={<BarChart3 size={15} />} label="Overview" />
+        <TabButton active={activeTab === "categories"} onClick={() => handleTabChange("categories")} icon={<Pill size={15} />} label="Diseases" />
+        <TabButton active={activeTab === "action"} onClick={() => handleTabChange("action")} icon={<AlertCircle size={15} />} label="Overdue" badge={actionList.length} />
       </div>
 
       {/* ---------------- TAB 1: OVERVIEW & MONTHLY ---------------- */}
       {activeTab === "monthly" && (
         <div className="space-y-4">
           
-          {/* Lifetime Mini-Cards */}
           <div className="grid grid-cols-4 gap-2">
-            <MiniStat label="Total" value={lifetime.total} color="#0A5C54" />
-            <MiniStat label="Active" value={lifetime.open} color="#B45309" />
-            <MiniStat label="Cured" value={lifetime.closed} color="#15803D" />
-            <MiniStat label="Lost" value={lifetime.lost} color="#DC2626" />
+            <MiniStat label="Lifetime" value={lifetime.total} color="#0A5C54" onClick={() => toggleList("All Patients (Lifetime)", lifetime.all)} isActive={expandedList?.title === "All Patients (Lifetime)"} />
+            <MiniStat label="Active" value={lifetime.open.length} color="#B45309" onClick={() => toggleList("Active Patients", lifetime.open)} isActive={expandedList?.title === "Active Patients"} />
+            <MiniStat label="Closed" value={lifetime.closed.length} color="#15803D" onClick={() => toggleList("Closed Cases", lifetime.closed)} isActive={expandedList?.title === "Closed Cases"} />
+            <MiniStat label="Lost" value={lifetime.lost.length} color="#DC2626" onClick={() => toggleList("Lost Patients", lifetime.lost)} isActive={expandedList?.title === "Lost Patients"} />
           </div>
 
           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -176,53 +219,102 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <p className="text-lg font-bold" style={{ color: "#DC2626" }}>{lifetime.lostRate}%</p>
              </div>
           </div>
-
-          {/* Monthly Dedicated Card */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden border" style={{ borderColor: "#14B8A622" }}>
+                  {/* DEEP MONTHLY CARD */}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden border relative" style={{ borderColor: "#14B8A622" }}>
             <div className="flex items-center justify-between p-3.5 border-b" style={{ borderColor: "#14B8A61A", background: "#F4FAF9" }}>
-              <button onClick={prevMonth} className="p-1.5 rounded-lg bg-white shadow-sm text-teal-700"><ChevronLeft size={16} /></button>
-              <p className="font-bold text-sm" style={{ color: "#0A5C54" }}>{formatMonthYear(currentViewDate)}</p>
-              <button onClick={nextMonth} disabled={currentViewDate.getTime() >= new Date(now.getFullYear(), now.getMonth(), 1).getTime()} className="p-1.5 rounded-lg bg-white shadow-sm text-teal-700 disabled:opacity-30"><ChevronRight size={16} /></button>
+              <button onClick={() => setShowMonthPicker(true)} className="flex items-center gap-2 font-bold text-sm px-3 py-1.5 rounded-lg bg-white shadow-sm border" style={{ color: "#0A5C54", borderColor: "#14B8A622" }}>
+                <CalIcon size={14} className="text-teal-600"/> 
+                {MONTHS[currentViewDate.getMonth()]} {currentViewDate.getFullYear()}
+                <ChevronDown size={14} className="text-gray-400"/>
+              </button>
+              <div className="text-right">
+                <p className="text-[10px] font-semibold text-gray-500 uppercase">Est. Revenue</p>
+                <p className="text-sm font-bold text-green-700">₹{monthly.revenue}</p>
+              </div>
             </div>
             
-            <div className="p-5">
-              <div className="text-center mb-6">
-                <p className="text-3xl font-black" style={{ color: "#0A5C54" }}>{monthly.totalVisits}</p>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Visits this month</p>
+            <div className="p-4">
+              <div className="text-center mb-5 pb-5 border-b border-dashed" style={{ borderColor: "#14B8A633" }}>
+                <p className="text-4xl font-black" style={{ color: "#0A5C54" }}>{monthly.totalVisitsCount}</p>
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-1">Total Visits In {MONTHS[currentViewDate.getMonth()]}</p>
               </div>
               
-              <div className="grid grid-cols-2 gap-y-4 gap-x-4">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">New Patients (Fresh)</p>
-                  <p className="text-lg font-bold" style={{ color: "#148A7A" }}>{monthly.newPatients}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Follow-ups (Old Patients)</p>
-                  <p className="text-lg font-bold" style={{ color: "#B45309" }}>{monthly.followups}</p>
-                </div>
-                <div className="col-span-2 pt-3 border-t" style={{ borderColor: "#14B8A61A" }}>
-                  <p className="text-xs text-gray-500 mb-1">Estimated Revenue this month</p>
-                  <p className="text-xl font-bold" style={{ color: "#15803D" }}>₹{monthly.revenue}</p>
-                </div>
+              <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-5">
+                <StatDetail label="New (Fresh)" value={monthly.newPatients.length} color="#148A7A" onClick={() => toggleList("New Patients", monthly.newPatients)} isActive={expandedList?.title === "New Patients"} />
+                <StatDetail label="Same-Month Return" value={monthly.sameMonthReturns.length} color="#B45309" help="Came 2nd time" onClick={() => toggleList("Same-Month Returns", monthly.sameMonthReturns)} isActive={expandedList?.title === "Same-Month Returns"} />
+                <StatDetail label="Old Returns" value={monthly.oldReturns.length} color="#7C3AED" help="Previous months" onClick={() => toggleList("Old Returns", monthly.oldReturns)} isActive={expandedList?.title === "Old Returns"} />
+                <StatDetail label="Overdue" value={monthly.overdueThisMonth.length} color="#DC2626" help="Missed dates" onClick={() => toggleList("Overdue This Month", monthly.overdueThisMonth)} isActive={expandedList?.title === "Overdue This Month"} />
+              </div>
+
+              <div className="flex gap-2 p-2 rounded-xl bg-gray-50 border border-gray-100 justify-around text-center">
+                <button onClick={() => toggleList("Closed This Month", monthly.closedThisMonth)} className={`flex-1 p-2 rounded-lg ${expandedList?.title === "Closed This Month" ? 'bg-white shadow-sm' : ''}`}>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase">Closed</p>
+                  <p className="text-sm font-bold text-green-700">{monthly.closedThisMonth.length}</p>
+                </button>
+                <div className="w-px bg-gray-200 my-2"></div>
+                <button onClick={() => toggleList("Lost This Month", monthly.lostThisMonth)} className={`flex-1 p-2 rounded-lg ${expandedList?.title === "Lost This Month" ? 'bg-white shadow-sm' : ''}`}>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase">Lost</p>
+                  <p className="text-sm font-bold text-red-600">{monthly.lostThisMonth.length}</p>
+                </button>
               </div>
             </div>
+            
+            {/* INLINE LIST VIEWER */}
+            {expandedList && (
+              <div className="bg-gray-50 border-t" style={{ borderColor: "#14B8A633" }}>
+                <div className="p-3 bg-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5"><ListFilter size={14} className="text-teal-600"/><p className="text-xs font-bold text-gray-800">{expandedList.title}</p></div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-teal-700 shadow-sm">{expandedList.data.length} patients</span>
+                </div>
+                <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                  {expandedList.data.map(pt => (
+                    <div key={pt.id} onClick={() => onSelect?.(pt)} className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-gray-200 shadow-sm cursor-pointer active:bg-gray-50">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-gray-800 truncate">{pt.name}</p>
+                        <p className="text-[9px] text-gray-500 truncate mt-0.5">{getComplaint(pt)} {pt.contact && `· ${pt.contact}`}</p>
+                      </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
+                    </div>
+                  ))}
+                  {expandedList.data.length === 0 && <p className="text-[11px] text-center py-4 text-gray-400">No patients in this list.</p>}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
-
-      {/* ---------------- TAB 2: DISEASE CATEGORIES ---------------- */}
+            {/* ---------------- TAB 2: DISEASE CATEGORIES ---------------- */}
       {activeTab === "categories" && (
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase text-gray-500 px-1 mb-1">Patient count by disease</p>
-          {categoryStats.map((cat, i) => (
-            <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border" style={{ borderColor: "#14B8A61A" }}>
-              <div className="flex items-center justify-between mb-3">
-                <p className="font-bold text-sm" style={{ color: "#0A5C54" }}>{cat.name}</p>
-                <span className="text-xs font-black px-2 py-1 rounded bg-teal-50" style={{ color: "#148A7A" }}>{cat.total} cases</span>
+        <div className="space-y-4">
+          {topCategory && (
+            <div className="grid grid-cols-2 gap-3 mb-2">
+              <div className="bg-teal-50 border border-teal-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-teal-800 mb-1"><TrendingUp size={14}/> <span className="text-[10px] font-bold uppercase">Highest</span></div>
+                <p className="font-bold text-sm text-teal-950 truncate">{topCategory.name}</p>
+                <p className="text-xs text-teal-700">{topCategory.total} cases</p>
               </div>
-              
-              {/* Visual Bar */}
-              <div className="flex h-2 w-full rounded-full overflow-hidden mb-3 bg-gray-100">
+              {bottomCategory && bottomCategory.name !== topCategory.name && (
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
+                  <div className="flex items-center gap-1.5 text-orange-800 mb-1"><TrendingDown size={14}/> <span className="text-[10px] font-bold uppercase">Lowest</span></div>
+                  <p className="font-bold text-sm text-orange-950 truncate">{bottomCategory.name}</p>
+                  <p className="text-xs text-orange-700">{bottomCategory.total} cases</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {categoryStats.map((cat, i) => (
+            <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border transition-all" style={{ borderColor: "#14B8A61A" }}>
+              <button onClick={() => setExpandedCategory(expandedCategory === cat.name ? null : cat.name)} className="w-full flex items-center justify-between mb-3 text-left outline-none">
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="font-bold text-sm truncate" style={{ color: "#0A5C54" }}>{cat.name}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-black px-2 py-1 rounded bg-teal-50" style={{ color: "#148A7A" }}>{cat.total}</span>
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform ${expandedCategory === cat.name ? "rotate-180" : ""}`}/>
+                </div>
+              </button>
+              <div className="flex h-2 w-full rounded-full overflow-hidden mb-2 bg-gray-100">
                 {cat.total > 0 && (
                   <>
                     <div style={{ width: `${(cat.closed/cat.total)*100}%`, background: "#15803D" }}></div>
@@ -231,88 +323,98 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                   </>
                 )}
               </div>
-              
-              <div className="flex justify-between text-[10px] font-semibold text-gray-500">
+              <div className="flex justify-between text-[10px] font-semibold text-gray-500 mb-2">
                 <span style={{ color: "#15803D" }}>{cat.closed} Cured</span>
                 <span style={{ color: "#B45309" }}>{cat.open} Active</span>
                 <span style={{ color: "#DC2626" }}>{cat.lost} Lost</span>
               </div>
+              {expandedCategory === cat.name && (
+                <div className="mt-3 pt-3 border-t border-dashed space-y-2 max-h-48 overflow-y-auto" style={{ borderColor: "#14B8A633" }}>
+                  {cat.patientList.map(pt => (
+                    <div key={pt.id} onClick={() => onSelect?.(pt)} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100 cursor-pointer active:bg-gray-100">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-gray-800 truncate">{pt.name}</p>
+                        {pt.contact && <p className="text-[9px] text-gray-500">{pt.contact}</p>}
+                      </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ background: pt.status === "closed" ? "#DCFCE7" : pt.status === "lost" ? "#FEE2E2" : "#FEF3C7", color: pt.status === "closed" ? "#15803D" : pt.status === "lost" ? "#DC2626" : "#B45309" }}>{pt.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
-          {categoryStats.length === 0 && <p className="text-center text-sm py-10 text-gray-400">No categories recorded yet.</p>}
         </div>
       )}
-              {/* ---------------- TAB 3: ACTION DESK (OVERDUE) ---------------- */}
+
+      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) ---------------- */}
       {activeTab === "action" && (
         <div className="space-y-3">
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex items-start gap-2 mb-2">
              <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-             <p className="text-xs text-red-800">
-               These patients' medicine has finished, but they haven't returned. Call them for a follow-up or mark them as "Lost".
-             </p>
+             <p className="text-xs text-red-800">Medicine finished, haven't returned. Call them or mark "Lost".</p>
           </div>
-          
           {actionList.map(({ patient, dueInfo }) => (
             <button key={patient.id} onClick={() => onSelect?.(patient)} className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between" style={{ borderColor: "#14B8A61A" }}>
               <div className="min-w-0">
                 <p className="text-sm font-bold truncate" style={{ color: "#0A5C54" }}>{patient.name}</p>
                 <p className="text-[10px] text-gray-500 truncate mb-1.5">{getComplaint(patient)}</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-red-700 bg-red-100 uppercase tracking-wide">
-                    {dueInfo.days} days overdue
-                  </span>
-                  {patient.contact && (
-                    <span className="text-[10px] flex items-center gap-0.5 font-medium text-teal-700">
-                      <Phone size={10} /> {patient.contact}
-                    </span>
-                  )}
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-red-700 bg-red-100 uppercase tracking-wide">{dueInfo.days} days overdue</span>
+                  {patient.contact && <span className="text-[10px] flex items-center gap-0.5 font-medium text-teal-700"><Phone size={10} /> {patient.contact}</span>}
                 </div>
               </div>
               <ChevronRight size={16} className="text-gray-400 shrink-0" />
             </button>
           ))}
-          
-          {actionList.length === 0 && (
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm border" style={{ borderColor: "#14B8A61A" }}>
-              <CheckCircle2 size={24} className="mx-auto mb-2 text-green-600" />
-              <p className="text-xs font-semibold text-gray-600">All clear! No overdue patients.</p>
+        </div>
+      )}
+
+      {/* MONTH PICKER MODAL */}
+      {showMonthPicker && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowMonthPicker(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-xs p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPickerYear(y => y - 1)} className="p-2 bg-gray-100 rounded-lg"><ChevronLeft size={18}/></button>
+              <p className="font-bold text-lg text-teal-900">{pickerYear}</p>
+              <button onClick={() => setPickerYear(y => y + 1)} className="p-2 bg-gray-100 rounded-lg"><ChevronRight size={18}/></button>
             </div>
-          )}
+            <div className="grid grid-cols-3 gap-2">
+              {MONTHS.map((m, i) => (
+                <button key={m} onClick={() => selectMonth(i)} className={`py-3 rounded-xl text-sm font-semibold transition ${pickerYear === currentViewDate.getFullYear() && i === currentViewDate.getMonth() ? "bg-teal-600 text-white shadow-md" : "bg-gray-50 text-gray-700 hover:bg-teal-50"}`}>{m}</button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// --- HELPER UI COMPONENTS ---
+// --- HELPER COMPONENTS ---
 function TabButton({ active, onClick, icon, label, badge }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl transition relative`}
-      style={{
-        background: active ? "#148A7A" : "transparent",
-        color: active ? "white" : "#0A5C5499",
-      }}
-    >
-      <div className="flex items-center gap-1.5">
-        {icon}
-        <span className="text-[11px] font-bold">{label}</span>
-      </div>
-      {badge > 0 && (
-        <span className="absolute top-1 right-2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black" style={{ background: active ? "#DC2626" : "#FEE2E2", color: active ? "white" : "#DC2626" }}>
-          {badge}
-        </span>
-      )}
+    <button onClick={onClick} className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-xl transition relative`} style={{ background: active ? "#148A7A" : "transparent", color: active ? "white" : "#0A5C5499" }}>
+      <div className="flex items-center gap-1.5">{icon}<span className="text-[11px] font-bold">{label}</span></div>
+      {badge > 0 && <span className="absolute top-1 right-2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black" style={{ background: active ? "#DC2626" : "#FEE2E2", color: active ? "white" : "#DC2626" }}>{badge}</span>}
     </button>
   );
 }
 
-function MiniStat({ label, value, color }) {
+function MiniStat({ label, value, color, onClick, isActive }) {
   return (
-    <div className="bg-white p-2 rounded-xl shadow-sm border text-center flex flex-col justify-center" style={{ borderColor: "#14B8A61A" }}>
+    <button onClick={onClick} className={`bg-white p-2 rounded-xl shadow-sm border text-center flex flex-col justify-center transition ${isActive ? 'ring-2 ring-teal-500 bg-teal-50' : ''}`} style={{ borderColor: "#14B8A61A" }}>
       <p className="text-xl font-black" style={{ color }}>{value}</p>
       <p className="text-[9px] font-semibold uppercase text-gray-500 mt-0.5">{label}</p>
-    </div>
+    </button>
+  );
+}
+
+function StatDetail({ label, value, color, help, onClick, isActive }) {
+  return (
+    <button onClick={onClick} className={`text-left p-2 rounded-xl transition border ${isActive ? 'border-teal-400 bg-teal-50' : 'border-transparent active:bg-gray-50'}`}>
+      <p className="text-[10px] text-gray-500 font-semibold uppercase">{label}</p>
+      <p className="text-xl font-black" style={{ color }}>{value}</p>
+      {help && <p className="text-[9px] text-gray-400 mt-0.5">{help}</p>}
+    </button>
   );
 }
