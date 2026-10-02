@@ -9,8 +9,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // मैंने मॉडल का नाम बिल्कुल सही कर दिया है: gemini-1.5-flash-latest
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+    // सबसे भरोसेमंद और स्टेबल मॉडल (gemini-pro) का इस्तेमाल
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -20,7 +20,6 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
-    // अगर कोई भी एरर आता है, तो वह सीधा ऐप में दिखेगा
     if (data.error) {
        return res.status(200).json({ reply: "API Error: " + data.error.message });
     }
@@ -32,4 +31,3 @@ export default async function handler(req, res) {
     res.status(200).json({ reply: "AI से कनेक्ट नहीं हो पाया। कोड में कोई दिक्कत है।" });
   }
 }
-  
