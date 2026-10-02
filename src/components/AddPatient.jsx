@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
-import { X, Calculator as CalcIcon, AlertTriangle, User } from "lucide-react";
+import { X, Calculator as CalcIcon, AlertTriangle, User, Activity } from "lucide-react";
 import MedicineSelector from "./MedicineSelector";
 import Calculator from "./Calculator";
 import PackagePicker from "./PackagePicker";
 
-const inputClass =
-  "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
+const inputClass = "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
 const inputStyle = { borderColor: "#14B8A655" };
 const labelClass = "text-xs font-medium block mb-1.5";
 const labelStyle = { color: "#0A5C54" };
@@ -21,6 +20,7 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
     name: "",
     contact: "",
     date: todayStr(),
+    category: "", // New Category Field
     complaint: "",
     medicineNote: "",
     duration_days: "",
@@ -31,18 +31,19 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
   });
   const [medicines, setMedicines] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [calcField, setCalcField] = useState(null); // "cost" | "paid_amount" | "mr_commission" | null
-  const [mode, setMode] = useState("custom"); // "custom" | "package"
-  const [packageBase, setPackageBase] = useState(null); // { price, productIds: Set } | null
+  const [calcField, setCalcField] = useState(null); 
+  const [mode, setMode] = useState("custom"); 
+  const [packageBase, setPackageBase] = useState(null); 
   const priceMapRef = useRef({});
+
+  // Extract unique categories for suggestions
+  const uniqueCategories = [...new Set(patients.flatMap(p => p.visits?.map(v => v.category)).filter(Boolean))].sort();
 
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("pharmacy_products").select("id, price, tracking_type, bottle_size_ml");
       const map = {};
-      (data || []).forEach((p) => {
-        map[p.id] = p;
-      });
+      (data || []).forEach((p) => { map[p.id] = p; });
       priceMapRef.current = map;
     })();
   }, []);
@@ -51,7 +52,7 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
     if (!packageBase) return;
     let extra = 0;
     medicines.forEach((m) => {
-      if (packageBase.productIds.has(m.product_id)) return; // already priced into the package
+      if (packageBase.productIds.has(m.product_id)) return; 
       const prod = priceMapRef.current[m.product_id];
       if (!prod) return;
       if (m.ml) {
@@ -62,25 +63,18 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
       }
     });
     setForm((f) => ({ ...f, cost: String(Math.round((packageBase.price + extra) * 100) / 100) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medicines, packageBase]);
-
-  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+    const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   function normalize(str) {
     return (str || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
 
   const typedName = normalize(form.name);
-  const possibleMatches =
-    typedName.length >= 3
-      ? patients
-          .filter((p) => {
-            const existing = normalize(p.name);
-            return existing === typedName || existing.includes(typedName) || typedName.includes(existing);
-          })
-          .slice(0, 3)
-      : [];
+  const possibleMatches = typedName.length >= 3 ? patients.filter((p) => {
+    const existing = normalize(p.name);
+    return existing === typedName || existing.includes(typedName) || typedName.includes(existing);
+  }).slice(0, 3) : [];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -91,17 +85,10 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold" style={{ color: "#0A5C54" }}>
-            New Patient
-          </h3>
-          <button onClick={onClose} style={{ color: "#0A5C54" }}>
-            <X size={20} />
-          </button>
+          <h3 className="text-lg font-bold" style={{ color: "#0A5C54" }}>New Patient</h3>
+          <button onClick={onClose} style={{ color: "#0A5C54" }}><X size={20} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -112,18 +99,11 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
               <div className="mt-2 rounded-xl p-3" style={{ background: "#FEF3C7", border: "1px solid #FDE68A" }}>
                 <div className="flex items-center gap-1.5 mb-2">
                   <AlertTriangle size={13} color="#B45309" />
-                  <p className="text-[11px] font-semibold" style={{ color: "#92400E" }}>
-                    Milte-julte patient pehle se hain — kahin yeh wahi to nahi?
-                  </p>
+                  <p className="text-[11px] font-semibold" style={{ color: "#92400E" }}>Milte-julte patient pehle se hain — kahin yeh wahi to nahi?</p>
                 </div>
                 <div className="space-y-1.5">
                   {possibleMatches.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => onViewExisting && onViewExisting(p)}
-                      className="w-full flex items-center gap-2 bg-white rounded-lg px-2.5 py-2 text-left"
-                    >
+                    <button key={p.id} type="button" onClick={() => onViewExisting && onViewExisting(p)} className="w-full flex items-center gap-2 bg-white rounded-lg px-2.5 py-2 text-left">
                       <User size={13} color="#148A7A" className="shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-semibold truncate" style={{ color: "#0A5C54" }}>{p.name}</p>
@@ -132,9 +112,7 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] mt-2" style={{ color: "#92400E" }}>
-                  Agar yehi patient hai, upar tap karke unki profile mein visit add karein — naya profile na banayein.
-                </p>
+                <p className="text-[10px] mt-2" style={{ color: "#92400E" }}>Agar yehi patient hai, upar tap karke unki profile mein visit add karein — naya profile na banayein.</p>
               </div>
             )}
           </div>
@@ -147,66 +125,57 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
           </div>
 
           <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("custom");
-                setPackageBase(null);
-              }}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-              style={{
-                background: mode === "custom" ? "white" : "transparent",
-                color: "#0A5C54",
-                boxShadow: mode === "custom" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
-              }}
-            >
-              Custom
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("package")}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-              style={{
-                background: mode === "package" ? "white" : "transparent",
-                color: "#0A5C54",
-                boxShadow: mode === "package" ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
-              }}
-            >
-              Use Package
-            </button>
+            <button type="button" onClick={() => { setMode("custom"); setPackageBase(null); }} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition" style={{ background: mode === "custom" ? "white" : "transparent", color: "#0A5C54", boxShadow: mode === "custom" ? "0 1px 2px rgba(0,0,0,0.08)" : "none" }}>Custom</button>
+            <button type="button" onClick={() => setMode("package")} className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition" style={{ background: mode === "package" ? "white" : "transparent", color: "#0A5C54", boxShadow: mode === "package" ? "0 1px 2px rgba(0,0,0,0.08)" : "none" }}>Use Package</button>
           </div>
 
           {mode === "package" && (
-            <PackagePicker
-              onApply={({ complaint, medicines: pkgMeds, cost, mr_commission, duration_days, basePrice, packageProductIds }) => {
-                setForm((f) => ({ ...f, complaint, cost, mr_commission, duration_days }));
-                setMedicines(pkgMeds);
-                setPackageBase({ price: basePrice, productIds: new Set(packageProductIds) });
-              }}
-            />
+            <PackagePicker onApply={({ complaint, medicines: pkgMeds, cost, mr_commission, duration_days, basePrice, packageProductIds }) => {
+              setForm((f) => ({ ...f, complaint, cost, mr_commission, duration_days }));
+              setMedicines(pkgMeds);
+              setPackageBase({ price: basePrice, productIds: new Set(packageProductIds) });
+            }} />
           )}
-
-          <div>
+                    <div>
             <label className={labelClass} style={labelStyle}>Visit date</label>
             <input type="date" required value={form.date} onChange={update("date")} className={inputClass} style={inputStyle} />
           </div>
-          <div>
-            <label className={labelClass} style={labelStyle}>Complaint / diagnosis</label>
-            <input required value={form.complaint} onChange={update("complaint")} className={inputClass} style={inputStyle} />
+          
+          <div className="bg-gray-50 p-3 rounded-xl border border-teal-100">
+            <label className={labelClass} style={labelStyle}>Disease Category (मर्ज)</label>
+            <div className="relative">
+              <input 
+                list="disease-categories" 
+                required 
+                value={form.category} 
+                onChange={update("category")} 
+                placeholder="e.g. Hair Fall, Kidney Stone, Piles..." 
+                className={inputClass} 
+                style={inputStyle} 
+              />
+              <datalist id="disease-categories">
+                {uniqueCategories.map(c => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <p className="text-[9px] mt-1.5" style={{ color: "#0A5C5499" }}>Select from list or type a new category to save it automatically.</p>
           </div>
+
+          <div>
+            <label className={labelClass} style={labelStyle}>Specific Complaint / Diagnosis</label>
+            <input required value={form.complaint} onChange={update("complaint")} placeholder="Detailed symptoms..." className={inputClass} style={inputStyle} />
+          </div>
+          
           <div>
             <label className={labelClass} style={labelStyle}>Medicines given</label>
             <MedicineSelector value={medicines} onChange={setMedicines} />
-            {packageBase && (
-              <p className="text-[11px] mt-1.5" style={{ color: "#148A7A" }}>
-                Package price already included. Any extra medicine you add here will add its price to the total automatically.
-              </p>
-            )}
+            {packageBase && <p className="text-[11px] mt-1.5" style={{ color: "#148A7A" }}>Package price already included. Any extra medicine you add here will add its price to the total automatically.</p>}
           </div>
+          
           <div>
-            <label className={labelClass} style={labelStyle}>Notes (optional, e.g. dosage instructions)</label>
+            <label className={labelClass} style={labelStyle}>Notes (optional)</label>
             <input value={form.medicineNote} onChange={update("medicineNote")} className={inputClass} style={inputStyle} />
           </div>
+          
           <div className="flex gap-3">
             <div className="flex-1">
               <label className={labelClass} style={labelStyle}>Duration (days)</label>
@@ -216,21 +185,19 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
               <label className={labelClass} style={labelStyle}>Total cost (₹)</label>
               <div className="flex gap-1.5">
                 <input type="number" value={form.cost} onChange={update("cost")} className={inputClass} style={inputStyle} />
-                <button type="button" onClick={() => setCalcField("cost")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}>
-                  <CalcIcon size={16} />
-                </button>
+                <button type="button" onClick={() => setCalcField("cost")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}><CalcIcon size={16} /></button>
               </div>
             </div>
           </div>
+          
           <div>
             <label className={labelClass} style={labelStyle}>Amount paid (₹) — leave blank if paid in full</label>
             <div className="flex gap-1.5">
               <input type="number" value={form.paid_amount} onChange={update("paid_amount")} placeholder={form.cost || "0"} className={inputClass} style={inputStyle} />
-              <button type="button" onClick={() => setCalcField("paid_amount")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}>
-                <CalcIcon size={16} />
-              </button>
+              <button type="button" onClick={() => setCalcField("paid_amount")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}><CalcIcon size={16} /></button>
             </div>
           </div>
+          
           <div>
             <label className={labelClass} style={labelStyle}>Payment mode</label>
             <select value={form.payment_mode} onChange={update("payment_mode")} className={inputClass} style={inputStyle}>
@@ -239,37 +206,23 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
               <option value="card">Card</option>
             </select>
           </div>
+          
           <div>
             <label className={labelClass} style={labelStyle}>MR commission (₹, optional)</label>
             <div className="flex gap-1.5">
               <input type="number" value={form.mr_commission} onChange={update("mr_commission")} className={inputClass} style={inputStyle} />
-              <button type="button" onClick={() => setCalcField("mr_commission")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}>
-                <CalcIcon size={16} />
-              </button>
+              <button type="button" onClick={() => setCalcField("mr_commission")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}><CalcIcon size={16} /></button>
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-2 disabled:opacity-60"
-            style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}
-          >
+          <button type="submit" disabled={saving} className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-2 disabled:opacity-60" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
             {saving ? "Saving…" : "Save patient"}
           </button>
         </form>
       </div>
 
       {calcField && (
-        <Calculator
-          label={calcField === "cost" ? "Total cost" : calcField === "paid_amount" ? "Amount paid" : "MR commission"}
-          initialValue={form[calcField]}
-          onClose={() => setCalcField(null)}
-          onUse={(val) => {
-            setForm((f) => ({ ...f, [calcField]: val }));
-            setCalcField(null);
-          }}
-        />
+        <Calculator label={calcField === "cost" ? "Total cost" : calcField === "paid_amount" ? "Amount paid" : "MR commission"} initialValue={form[calcField]} onClose={() => setCalcField(null)} onUse={(val) => { setForm((f) => ({ ...f, [calcField]: val })); setCalcField(null); }} />
       )}
     </div>
   );
