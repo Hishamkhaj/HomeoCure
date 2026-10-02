@@ -123,7 +123,8 @@ export default function App() {
       {tab==="packages"&&<PackagesView/>}
       {tab==="mr"&&<MRView/>}
       {tab==="analytics"&&<AnalyticsView/>}
-      {tab==="patientAnalytics"&&<PatientsAnalyticsView patients={patients}/>} 
+      {/* Yahi wo line hai jisme fix add kiya gaya hai 👇 */}
+      {tab==="patientAnalytics"&&<PatientsAnalyticsView patients={patients} onSelect={goToPatientFromFollowUp}/>} 
       {tab==="income"&&(incomeUnlocked?<IncomeView patients={patients}/>:<div className="-mx-4 -mt-2"><PinLock pin={INCOME_PIN} storageKey="homeocure-income-unlocked" title="Income" subtitle="Enter Income PIN to continue" icon={<Lock size={30} color="white"/>} onUnlock={()=>setIncomeUnlocked(true)} fullScreen={false}/></div>)}
     </div>
 
