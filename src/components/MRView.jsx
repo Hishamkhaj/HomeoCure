@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { Plus, X, Pencil, Trash2, Calendar, Camera, FileImage, Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Plus, X, Pencil, Trash2, Calendar, Camera, FileImage, Loader2, ArrowUpRight, ArrowDownRight, Calculator } from "lucide-react";
 
 const inputClass = "w-full border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-teal-500 bg-white";
 const inputStyle = { borderColor: "#14B8A655" };
@@ -56,6 +56,7 @@ export default function MRView() {
   const [newMrName, setNewMrName] = useState("");
 
   const [formType, setFormType] = useState(null); // 'bill' or 'payment'
+  const [smartMode, setSmartMode] = useState(false); // toggle for auto-calculation
   const [editOrder, setEditOrder] = useState(null);
   const [orderForm, setOrderForm] = useState(emptyForm);
   const [confirmDeleteOrder, setConfirmDeleteOrder] = useState(null);
@@ -66,6 +67,10 @@ export default function MRView() {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrText, setOcrText] = useState("");
   const [ocrDetected, setOcrDetected] = useState(null);
+
+  const mrTotalBill = orders.reduce((sum, o) => sum + (Number(o.bill_amount) || 0), 0);
+  const mrTotalPaid = orders.reduce((sum, o) => sum + (Number(o.paid_amount) || 0), 0);
+  const netPending = Math.max(0, mrTotalBill - mrTotalPaid);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -120,6 +125,7 @@ export default function MRView() {
   function openForm(type, order = null) {
     setFormType(type);
     setEditOrder(order);
+    setSmartMode(false);
     setBillFile(null); setBillPreview(null); setOcrText(""); setOcrDetected(null);
     
     if (order) {
@@ -151,7 +157,10 @@ export default function MRView() {
       setOcrText(data.text || "");
       const detected = extractGrandTotal(data.text || "");
       setOcrDetected(detected);
-      if (detected) setOrderForm((f) => ({ ...f, bill_amount: String(detected) }));
+      if (detected) {
+        setOrderForm((f) => ({ ...f, bill_amount: String(detected) }));
+        if (detected > netPending && netPending > 0) setSmartMode(true);
+      }
     } catch (err) { console.error("OCR failed:", err); }
     setOcrRunning(false);
   }
@@ -174,12 +183,24 @@ export default function MRView() {
       billFilePath = path;
     }
 
+    // Smart Calculation Logic
+    let finalBillAmt = 0;
+    let finalPaidAmt = 0;
+
+    if (formType === 'bill') {
+      const enteredAmt = Number(orderForm.bill_amount) || 0;
+      finalBillAmt = (smartMode && !editOrder) ? Math.max(0, enteredAmt - netPending) : enteredAmt;
+    } else if (formType === 'payment') {
+      const enteredAmt = Number(orderForm.paid_amount) || 0;
+      finalPaidAmt = (smartMode && !editOrder) ? Math.max(0, netPending - enteredAmt) : enteredAmt;
+    }
+
     const payload = {
       mr_id: activeMr,
       order_date: orderForm.order_date,
       description: orderForm.description,
-      bill_amount: formType === 'bill' ? (Number(orderForm.bill_amount) || 0) : 0,
-      paid_amount: formType === 'payment' ? (Number(orderForm.paid_amount) || 0) : 0,
+      bill_amount: finalBillAmt,
+      paid_amount: finalPaidAmt,
       ...(billFile && formType === 'bill' ? { bill_file_path: billFilePath, ocr_grand_total: ocrDetected, ocr_raw_text: ocrText ? ocrText.slice(0, 3000) : null, bill_uploaded_at: new Date().toISOString() } : {}),
     };
 
@@ -190,7 +211,7 @@ export default function MRView() {
       const { error } = await supabase.from("mr_orders").insert(payload);
       if (error) { alert("Error saving: " + error.message); return; }
     }
-    setFormType(null); setEditOrder(null);
+    setFormType(null); setEditOrder(null); setSmartMode(false);
     loadOrders(activeMr);
   }
 
@@ -209,10 +230,6 @@ export default function MRView() {
     currentBalance += (Number(o.bill_amount) || 0) - (Number(o.paid_amount) || 0);
     return { ...o, runningBalance: currentBalance };
   }).reverse(); // Reverse for display (newest at top)
-
-  const mrTotalBill = orders.reduce((sum, o) => sum + (Number(o.bill_amount) || 0), 0);
-  const mrTotalPaid = orders.reduce((sum, o) => sum + (Number(o.paid_amount) || 0), 0);
-  const netPending = Math.max(0, mrTotalBill - mrTotalPaid);
 
   return (
     <div>
@@ -289,11 +306,11 @@ export default function MRView() {
                   
                   <div className="flex items-end justify-between mt-2 pt-2 border-t" style={{ borderColor: "#F1F5F9" }}>
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>{isPayment ? "Amount Paid" : "Bill Amount"}</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>{isPayment ? "Amount Paid" : "New Items Amount"}</p>
                       <p className="text-base font-bold" style={{ color: isPayment ? "#15803D" : "#DC2626" }}>₹{isPayment ? item.paid_amount : item.bill_amount}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>Running Balance</p>
+                      <p className="text-[10px] uppercase font-bold tracking-wide" style={{ color: "#0A5C5499" }}>Ledger Balance</p>
                       <p className="text-sm font-bold" style={{ color: "#0A5C54" }}>₹{item.runningBalance}</p>
                     </div>
                   </div>
@@ -310,7 +327,7 @@ export default function MRView() {
           </div>
         </>
       )}
-            {/* Add MR Modal */}
+            {/* Add / Edit MR Modals */}
       {showAddMr && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setShowAddMr(false)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -327,7 +344,6 @@ export default function MRView() {
         </div>
       )}
 
-      {/* Edit MR Modal */}
       {editMr && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setEditMr(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -344,7 +360,7 @@ export default function MRView() {
         </div>
       )}
 
-      {/* Delete MR Modal */}
+      {/* Delete Modals */}
       {confirmDeleteMr && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmDeleteMr(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
@@ -357,8 +373,20 @@ export default function MRView() {
           </div>
         </div>
       )}
+      {confirmDeleteOrder && (
+        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmDeleteOrder(null)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Delete Entry?</h3>
+            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>Are you sure you want to delete this {confirmDeleteOrder.paid_amount > 0 ? "payment" : "bill"} entry? It will recalculate your running balance. This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteOrder(null)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>Cancel</button>
+              <button onClick={() => deleteOrder(confirmDeleteOrder)} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: "#DC2626" }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Transaction Modal (Bill or Payment) */}
+      {/* Smart Transaction Modal (Bill or Payment) */}
       {formType && (
         <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setFormType(null)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -373,11 +401,6 @@ export default function MRView() {
               <div>
                 <label className={labelClass} style={labelStyle}>Date</label>
                 <input type="date" required value={orderForm.order_date} onChange={(e) => setOrderForm((f) => ({ ...f, order_date: e.target.value }))} className={inputClass} style={inputStyle} />
-              </div>
-              
-              <div>
-                <label className={labelClass} style={labelStyle}>Notes / Description (Optional)</label>
-                <input value={orderForm.description} onChange={(e) => setOrderForm((f) => ({ ...f, description: e.target.value }))} placeholder={formType === 'bill' ? "e.g. Belladonna Q, slip from WhatsApp" : "e.g. Paid via UPI, Cash"} className={inputClass} style={inputStyle} />
               </div>
 
               {formType === 'bill' && (
@@ -396,12 +419,11 @@ export default function MRView() {
                     <button type="button" onClick={() => viewBill(existingBillPath)} className="flex items-center gap-1 text-xs font-medium mt-1.5" style={{ color: "#148A7A" }}><FileImage size={12} /> View saved photo</button>
                   )}
                   {ocrRunning && <p className="flex items-center gap-1.5 text-xs mt-1.5" style={{ color: "#0A5C5499" }}><Loader2 size={12} className="animate-spin" /> Scanning amount...</p>}
-                  {!ocrRunning && ocrDetected && <p className="text-xs mt-1.5" style={{ color: "#148A7A" }}>Detected total: ₹{ocrDetected}</p>}
                 </div>
               )}
 
               <div>
-                <label className={labelClass} style={labelStyle}>{formType === 'bill' ? "Total Bill Amount (₹)" : "Amount Paid (₹)"}</label>
+                <label className={labelClass} style={labelStyle}>{formType === 'bill' ? "Amount written on Bill (₹)" : "Amount Paid or Remaining (₹)"}</label>
                 <input 
                   type="number" required min="1" step="0.01" 
                   value={formType === 'bill' ? orderForm.bill_amount : orderForm.paid_amount} 
@@ -410,27 +432,47 @@ export default function MRView() {
                 />
               </div>
 
+              {/* The "Smart Calculator" Toggle */}
+              {!editOrder && netPending > 0 && (
+                <div className="mt-3 p-3 rounded-xl bg-gray-50 border border-teal-100 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-teal-500"></div>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" className="mt-1 accent-teal-600" checked={smartMode} onChange={(e) => setSmartMode(e.target.checked)} />
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold" style={{ color: "#0A5C54" }}>
+                        {formType === 'bill' ? `बिल में पुराना बैलेंस (₹${netPending}) जुड़ा है?` : `क्या ये बचा हुआ (Remaining) बैलेंस है?`}
+                      </p>
+                      <p className="text-[9px] mt-0.5" style={{ color: "#0A5C5499" }}>
+                        {formType === 'bill' ? "सिस्टम ख़ुद सिर्फ़ नए ऑर्डर का पैसा सेव कर लेगा।" : "सिस्टम ख़ुद कैलकुलेट कर लेगा कि पेमेंट कितने का हुआ।"}
+                      </p>
+                    </div>
+                  </label>
+                  
+                  {smartMode && (
+                    <div className="mt-2 pt-2 border-t border-teal-100 flex items-center justify-between">
+                      <span className="text-[10px] font-bold" style={{ color: "#148A7A" }}><Calculator size={10} className="inline mr-1"/> Auto-calculated:</span>
+                      <span className="text-sm font-black" style={{ color: "#0A5C54" }}>
+                        ₹{formType === 'bill' 
+                          ? Math.max(0, (Number(orderForm.bill_amount) || 0) - netPending)
+                          : Math.max(0, netPending - (Number(orderForm.paid_amount) || 0))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className={labelClass} style={labelStyle}>Notes / Description (Optional)</label>
+                <input value={orderForm.description} onChange={(e) => setOrderForm((f) => ({ ...f, description: e.target.value }))} placeholder={formType === 'bill' ? "e.g. 5x Arnica, etc." : "e.g. Paid via Cash/UPI"} className={inputClass} style={inputStyle} />
+              </div>
+
               <button type="submit" className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-4" style={{ background: formType === 'bill' ? "linear-gradient(135deg, #148A7A, #0A5C54)" : "linear-gradient(135deg, #15803D, #166534)" }}>
-                {editOrder ? "Save Changes" : (formType === 'bill' ? "Save Bill" : "Save Payment")}
+                {editOrder ? "Save Changes" : (formType === 'bill' ? "Save New Bill" : "Save Payment")}
               </button>
             </form>
           </div>
         </div>
       )}
-
-      {/* Delete Transaction Modal */}
-      {confirmDeleteOrder && (
-        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmDeleteOrder(null)}>
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Delete Entry?</h3>
-            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>Are you sure you want to delete this {confirmDeleteOrder.paid_amount > 0 ? "payment" : "bill"} entry? It will recalculate your running balance. This cannot be undone.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteOrder(null)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>Cancel</button>
-              <button onClick={() => deleteOrder(confirmDeleteOrder)} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: "#DC2626" }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-          }
+}
