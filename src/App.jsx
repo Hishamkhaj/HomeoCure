@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import SplashScreen from "./components/SplashScreen";
+import AIAssistant from "./components/AIAssistant";
 import PinLock, { INCOME_PIN } from "./components/PinLock";
 import PatientList from "./components/PatientList";
 import AddPatient from "./components/AddPatient";
@@ -34,7 +35,7 @@ export default function App() {
   const [tab, setTab] = useState("today");
   const [showMore, setShowMore] = useState(false);
   const [returnTab, setReturnTab] = useState(null); 
-  const [showSplash, setShowSplash] = useState(true); // <-- Splash Screen State Added
+  const [showSplash, setShowSplash] = useState(true); 
 
   useEffect(() => { if (unlocked) fetchPatients(); }, [unlocked]);
 
@@ -103,10 +104,9 @@ export default function App() {
     setTab("patients");
     setSelected(p);
   }
-    // <-- Splash Screen Logic Applied Here -->
     if (!unlocked) return <PinLock onUnlock={() => setUnlocked(true)} />;
   if (showSplash) return <SplashScreen onComplete={() => setShowSplash(false)} />;
-  
+
   const overdueCount=patients.filter(p=>{if(p.status!=="open")return false;const v=[...(p.visits||[])].sort((a,b)=>b.ts-a.ts)[0];if(!v?.duration_days)return false;return Date.now()>=v.ts+Number(v.duration_days)*86400000}).length;
   const MORE_ITEMS=[
     {key:"followup",label:"Follow-up",icon:Calendar,color:"#F59E0B",badge:overdueCount},
@@ -148,6 +148,9 @@ export default function App() {
     {showMore&&<div className="fixed inset-0 bg-black/30 z-50 flex items-end" onClick={()=>setShowMore(false)}><div className="bg-white rounded-t-3xl w-full max-w-sm mx-auto p-6 pb-8" onClick={e=>e.stopPropagation()}><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold font-serif" style={{color:TEAL}}>More</h3><button onClick={()=>setShowMore(false)} style={{color:TEAL}}><X size={20}/></button></div><div className="grid grid-cols-3 gap-3">{MORE_ITEMS.map(item=>{const Icon=item.icon;return <button key={item.key} onClick={()=>{setTab(item.key);setShowMore(false)}} className="flex flex-col items-center gap-2 relative"><div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{background:`${item.color}1A`}}><Icon size={24} color={item.color}/></div><span className="text-xs font-medium text-center" style={{color:TEAL}}>{item.label}</span>{item.badge>0&&<span className="absolute -top-1 right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center text-white font-bold" style={{background:RED}}>{item.badge}</span>}</button>})}</div></div></div>}
     {showAdd&&<AddPatient onClose={()=>setShowAdd(false)} onSave={handleAddPatient} patients={patients} onViewExisting={p=>{setShowAdd(false);setTab("patients");setSelected(p)}}/>}
     {showAbout&&<AboutModal onClose={()=>setShowAbout(false)}/>} 
-  </div>;
-      }
     
+    {/* Yahan par humne AI Assistant add kar diya hai 👇 */}
+    {unlocked && <AIAssistant />}
+  </div>;
+     }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
