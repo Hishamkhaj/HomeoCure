@@ -5,12 +5,12 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    return res.status(200).json({ reply: "Vercel में API Key सेट नहीं है। कृपया चेक करें।" });
+    return res.status(200).json({ reply: "Vercel में API Key सेट नहीं है।" });
   }
 
   try {
-    // सबसे भरोसेमंद और स्टेबल मॉडल (gemini-pro) का इस्तेमाल
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+    // 100% सही और ऑफिशियल मॉडल का नाम: gemini-1.5-flash
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
