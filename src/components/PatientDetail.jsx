@@ -25,17 +25,9 @@ function formatDate(ts) {
 }
 
 const emptyForm = {
-  date: todayStr(),
-  category: "", 
-  complaint: "",
-  medicineNote: "",
-  duration_days: "",
-  cost: "",
-  paid_amount: "",
-  payment_mode: "cash",
-  mr_commission: "",
+  date: todayStr(), category: "", complaint: "", medicineNote: "",
+  duration_days: "", cost: "", paid_amount: "", payment_mode: "cash", mr_commission: "",
 };
-
 export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit, onToggleStatus, onMarkLost, onReactivate }) {
   const [showForm, setShowForm] = useState(false);
   const [editingVisit, setEditingVisit] = useState(null); 
@@ -48,7 +40,6 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
   const [confirmLost, setConfirmLost] = useState(false);
   const priceMapRef = useRef({});
 
-  // Suggest categories based on this patient's past history
   const uniqueCategories = [...new Set((patient.visits || []).map(v => v.category).filter(Boolean))].sort();
 
   useEffect(() => {
@@ -78,7 +69,8 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
   }, [medicines, packageBase]);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-    const visits = [...(patient.visits || [])].sort((a, b) => b.ts - a.ts);
+  
+  const visits = [...(patient.visits || [])].sort((a, b) => b.ts - a.ts);
   const totalDue = visits.reduce((sum, v) => {
     const cost = v.cost || 0;
     const paid = v.paid_amount ?? cost;
@@ -99,15 +91,10 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
   function openEditForm(v) {
     setEditingVisit(v.ts);
     setForm({
-      date: dateStrFromTs(v.ts),
-      category: v.category || "",
-      complaint: v.complaint || "",
-      medicineNote: v.medicineNote || v.medicine || "",
-      duration_days: v.duration_days ?? "",
-      cost: v.cost ?? "",
-      paid_amount: v.paid_amount ?? v.cost ?? "",
-      payment_mode: v.payment_mode || "cash",
-      mr_commission: v.mr_commission ?? "",
+      date: dateStrFromTs(v.ts), category: v.category || "", complaint: v.complaint || "",
+      medicineNote: v.medicineNote || v.medicine || "", duration_days: v.duration_days ?? "",
+      cost: v.cost ?? "", paid_amount: v.paid_amount ?? v.cost ?? "",
+      payment_mode: v.payment_mode || "cash", mr_commission: v.mr_commission ?? "",
     });
     setMedicines(v.medicines || []);
     setMode("custom");
@@ -117,18 +104,22 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
+    const payload = { ...form };
+    if (!payload.complaint) {
+      payload.complaint = payload.category || "General Visit";
+    }
+
     if (editingVisit) {
-      await onEditVisit(editingVisit, { ...form, medicines });
+      await onEditVisit(editingVisit, { ...payload, medicines });
     } else {
-      await onAddVisit({ ...form, medicines });
+      await onAddVisit({ ...payload, medicines });
     }
     setSaving(false);
     setShowForm(false);
   };
 
   const isLost = patient.status === "lost";
-
-  return (
+        return (
     <div>
       <button onClick={onBack} className="flex items-center gap-1.5 text-sm mb-4" style={{ color: "#148A7A" }}><ArrowLeft size={16} /> Back</button>
 
@@ -221,7 +212,7 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
             {!editingVisit && mode === "package" && (
               <div className="mb-4">
                 <PackagePicker onApply={({ complaint, medicines: pkgMeds, cost, mr_commission, duration_days, basePrice, packageProductIds }) => {
-                    setForm((f) => ({ ...f, complaint, cost, mr_commission, duration_days }));
+                    setForm((f) => ({ ...f, category: complaint, complaint: complaint, cost, mr_commission, duration_days }));
                     setMedicines(pkgMeds);
                     setPackageBase({ price: basePrice, productIds: new Set(packageProductIds) });
                   }} />
@@ -242,12 +233,6 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
                     {uniqueCategories.map(c => <option key={c} value={c} />)}
                   </datalist>
                 </div>
-                <p className="text-[9px] mt-1.5" style={{ color: "#0A5C5499" }}>Type to save a new category or select an existing one for this patient.</p>
-              </div>
-
-              <div>
-                <label className={labelClass} style={labelStyle}>Specific Complaint / Diagnosis</label>
-                <input required value={form.complaint} onChange={update("complaint")} className={inputClass} style={inputStyle} />
               </div>
               
               <div>
@@ -302,15 +287,7 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
                 </select>
               </div>
               
-              <div>
-                <label className={labelClass} style={labelStyle}>MR commission (₹, optional)</label>
-                <div className="flex gap-1.5">
-                  <input type="number" value={form.mr_commission} onChange={update("mr_commission")} className={inputClass} style={inputStyle} />
-                  <button type="button" onClick={() => setCalcField("mr_commission")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}><CalcIcon size={16} /></button>
-                </div>
-              </div>
-              
-              <button type="submit" disabled={saving} className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-60" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
+              <button type="submit" disabled={saving} className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-4 disabled:opacity-60" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
                 {saving ? "Saving…" : editingVisit ? "Save changes" : "Save visit"}
               </button>
             </form>
@@ -319,20 +296,7 @@ export default function PatientDetail({ patient, onBack, onAddVisit, onEditVisit
       )}
 
       {calcField && (
-        <Calculator label={calcField === "cost" ? "Total cost" : calcField === "paid_amount" ? "Amount paid" : "MR commission"} initialValue={form[calcField]} onClose={() => setCalcField(null)} onUse={(val) => { setForm((f) => ({ ...f, [calcField]: val })); setCalcField(null); }} />
-      )}
-
-      {confirmLost && (
-        <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={() => setConfirmLost(false)}>
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold font-serif mb-2" style={{ color: "#0A5C54" }}>Mark as lost?</h3>
-            <p className="text-sm mb-5" style={{ color: "#0A5C5499" }}>This marks <strong>{patient.name}</strong> as not returning. They'll be excluded from follow-up reminders, and counted in the monthly report. You can reactivate them anytime if they come back.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmLost(false)} className="flex-1 py-3 rounded-xl text-sm font-semibold border" style={{ borderColor: "#14B8A655", color: "#0A5C54" }}>Cancel</button>
-              <button onClick={() => { onMarkLost(); setConfirmLost(false); }} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: "#6B7280" }}>Mark as Lost</button>
-            </div>
-          </div>
-        </div>
+        <Calculator label={calcField === "cost" ? "Total cost" : "Amount paid"} initialValue={form[calcField]} onClose={() => setCalcField(null)} onUse={(val) => { setForm((f) => ({ ...f, [calcField]: val })); setCalcField(null); }} />
       )}
     </div>
   );
