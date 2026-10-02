@@ -14,20 +14,11 @@ function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
 export default function AddPatient({ onClose, onSave, patients = [], onViewExisting }) {
   const [form, setForm] = useState({
-    name: "",
-    contact: "",
-    date: todayStr(),
-    category: "", // New Category Field
-    complaint: "",
-    medicineNote: "",
-    duration_days: "",
-    cost: "",
-    paid_amount: "",
-    payment_mode: "cash",
-    mr_commission: "",
+    name: "", contact: "", date: todayStr(), category: "", complaint: "",
+    medicineNote: "", duration_days: "", cost: "", paid_amount: "",
+    payment_mode: "cash", mr_commission: "",
   });
   const [medicines, setMedicines] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -36,7 +27,6 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
   const [packageBase, setPackageBase] = useState(null); 
   const priceMapRef = useRef({});
 
-  // Extract unique categories for suggestions
   const uniqueCategories = [...new Set(patients.flatMap(p => p.visits?.map(v => v.category)).filter(Boolean))].sort();
 
   useEffect(() => {
@@ -64,11 +54,10 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
     });
     setForm((f) => ({ ...f, cost: String(Math.round((packageBase.price + extra) * 100) / 100) }));
   }, [medicines, packageBase]);
-    const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  
+  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  function normalize(str) {
-    return (str || "").trim().toLowerCase().replace(/\s+/g, " ");
-  }
+  function normalize(str) { return (str || "").trim().toLowerCase().replace(/\s+/g, " "); }
 
   const typedName = normalize(form.name);
   const possibleMatches = typedName.length >= 3 ? patients.filter((p) => {
@@ -79,11 +68,14 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    await onSave({ ...form, medicines });
+    const payload = { ...form };
+    if (!payload.complaint) {
+      payload.complaint = payload.category || "General Visit";
+    }
+    await onSave({ ...payload, medicines });
     setSaving(false);
   };
-
-  return (
+    return (
     <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
@@ -112,7 +104,6 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] mt-2" style={{ color: "#92400E" }}>Agar yehi patient hai, upar tap karke unki profile mein visit add karein — naya profile na banayein.</p>
               </div>
             )}
           </div>
@@ -131,12 +122,13 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
 
           {mode === "package" && (
             <PackagePicker onApply={({ complaint, medicines: pkgMeds, cost, mr_commission, duration_days, basePrice, packageProductIds }) => {
-              setForm((f) => ({ ...f, complaint, cost, mr_commission, duration_days }));
+              setForm((f) => ({ ...f, category: complaint, complaint: complaint, cost, mr_commission, duration_days }));
               setMedicines(pkgMeds);
               setPackageBase({ price: basePrice, productIds: new Set(packageProductIds) });
             }} />
           )}
-                    <div>
+          
+          <div>
             <label className={labelClass} style={labelStyle}>Visit date</label>
             <input type="date" required value={form.date} onChange={update("date")} className={inputClass} style={inputStyle} />
           </div>
@@ -144,28 +136,13 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
           <div className="bg-gray-50 p-3 rounded-xl border border-teal-100">
             <label className={labelClass} style={labelStyle}>Disease Category (मर्ज)</label>
             <div className="relative">
-              <input 
-                list="disease-categories" 
-                required 
-                value={form.category} 
-                onChange={update("category")} 
-                placeholder="e.g. Hair Fall, Kidney Stone, Piles..." 
-                className={inputClass} 
-                style={inputStyle} 
-              />
+              <input list="disease-categories" required value={form.category} onChange={update("category")} placeholder="e.g. Hair Fall, Kidney Stone..." className={inputClass} style={inputStyle} />
               <datalist id="disease-categories">
                 {uniqueCategories.map(c => <option key={c} value={c} />)}
               </datalist>
             </div>
-            <p className="text-[9px] mt-1.5" style={{ color: "#0A5C5499" }}>Select from list or type a new category to save it automatically.</p>
           </div>
-
-          <div>
-            <label className={labelClass} style={labelStyle}>Specific Complaint / Diagnosis</label>
-            <input required value={form.complaint} onChange={update("complaint")} placeholder="Detailed symptoms..." className={inputClass} style={inputStyle} />
-          </div>
-          
-          <div>
+                    <div>
             <label className={labelClass} style={labelStyle}>Medicines given</label>
             <MedicineSelector value={medicines} onChange={setMedicines} />
             {packageBase && <p className="text-[11px] mt-1.5" style={{ color: "#148A7A" }}>Package price already included. Any extra medicine you add here will add its price to the total automatically.</p>}
@@ -191,7 +168,7 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
           </div>
           
           <div>
-            <label className={labelClass} style={labelStyle}>Amount paid (₹) — leave blank if paid in full</label>
+            <label className={labelClass} style={labelStyle}>Amount paid (₹)</label>
             <div className="flex gap-1.5">
               <input type="number" value={form.paid_amount} onChange={update("paid_amount")} placeholder={form.cost || "0"} className={inputClass} style={inputStyle} />
               <button type="button" onClick={() => setCalcField("paid_amount")} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#14B8A61A", color: "#0A5C54" }}><CalcIcon size={16} /></button>
@@ -201,9 +178,7 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
           <div>
             <label className={labelClass} style={labelStyle}>Payment mode</label>
             <select value={form.payment_mode} onChange={update("payment_mode")} className={inputClass} style={inputStyle}>
-              <option value="cash">Cash</option>
-              <option value="upi">UPI</option>
-              <option value="card">Card</option>
+              <option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option>
             </select>
           </div>
           
@@ -226,4 +201,4 @@ export default function AddPatient({ onClose, onSave, patients = [], onViewExist
       )}
     </div>
   );
-}
+            }
