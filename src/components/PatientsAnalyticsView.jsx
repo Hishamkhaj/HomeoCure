@@ -30,7 +30,6 @@ function visitTime(visit) {
   return toMs(visit?.ts || visit?.date);
 }
 
-// SMART LOGIC: Ignore "Same" and find the actual most recent disease
 function getComplaint(patient) {
   const visits = [...(patient?.visits || [])].sort((a, b) => visitTime(b) - visitTime(a));
   
@@ -137,7 +136,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
       revenue: totalRevenue, closedThisMonth: getUnique(closedThisMonth), lostThisMonth: getUnique(lostThisMonth), overdueThisMonth: getUnique(overdueThisMonth)
     };
   }, [patients, currentViewDate, nowMs]);
-           const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
+        const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
     const map = {};
     patients.forEach(p => {
       if (!p.visits?.length) return;
@@ -212,7 +211,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <p className="text-lg font-bold" style={{ color: "#DC2626" }}>{lifetime.lostRate}%</p>
              </div>
           </div>
-                      {/* DEEP MONTHLY CARD */}
+                    {/* DEEP MONTHLY CARD */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden border relative" style={{ borderColor: "#14B8A622" }}>
             <div className="flex items-center justify-between p-3.5 border-b" style={{ borderColor: "#14B8A61A", background: "#F4FAF9" }}>
               <button onClick={() => setShowMonthPicker(true)} className="flex items-center gap-2 font-bold text-sm px-3 py-1.5 rounded-lg bg-white shadow-sm border" style={{ color: "#0A5C54", borderColor: "#14B8A622" }}>
@@ -263,7 +262,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                   {expandedList.data.map(pt => (
                     <button 
                       key={pt.id} 
-                      onClick={(e) => { e.stopPropagation(); if(onSelect) onSelect(pt); }} 
+                      onClick={() => onSelect?.(pt)} 
                       className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:scale-[0.98] transition-transform"
                     >
                       <div className="min-w-0 flex-1">
@@ -332,7 +331,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                   {cat.patientList.map(pt => (
                     <button 
                       key={pt.id} 
-                      onClick={(e) => { e.stopPropagation(); if(onSelect) onSelect(pt); }} 
+                      onClick={() => onSelect?.(pt)} 
                       className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:scale-[0.98] transition-transform"
                     >
                       <div className="min-w-0 flex-1">
@@ -359,7 +358,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
           {actionList.map(({ patient, dueInfo }) => (
             <button 
               key={patient.id} 
-              onClick={(e) => { e.stopPropagation(); if(onSelect) onSelect(patient); }} 
+              onClick={() => onSelect?.(patient)} 
               className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:scale-[0.98] transition-transform" 
               style={{ borderColor: "#14B8A61A" }}
             >
@@ -425,5 +424,4 @@ function StatDetail({ label, value, color, help, onClick, isActive }) {
       {help && <p className="text-[9px] text-gray-400 mt-0.5">{help}</p>}
     </button>
   );
-                }
-        
+      }
