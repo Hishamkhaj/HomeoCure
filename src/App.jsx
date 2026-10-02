@@ -22,7 +22,6 @@ const TEAL2 = "#148A7A";
 const RED = "#DC2626";
 
 function dateStrToTs(dateStr) { return new Date(dateStr + "T12:00:00").getTime(); }
-
 export default function App() {
   const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("homeocure-unlocked") === "true");
   const [incomeUnlocked, setIncomeUnlocked] = useState(() => sessionStorage.getItem("homeocure-income-unlocked") === "true");
@@ -33,6 +32,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [tab, setTab] = useState("today");
   const [showMore, setShowMore] = useState(false);
+  const [returnTab, setReturnTab] = useState(null); // <-- Yahan Memory Add ki hai
 
   useEffect(() => { if (unlocked) fetchPatients(); }, [unlocked]);
 
@@ -61,8 +61,7 @@ export default function App() {
     const ids = new Set(toMark.map(p=>p.id));
     return list.map(p=>ids.has(p.id)?{...p,status:"lost",lost_at:lostAt}:p);
   }
-
-  async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
+    async function syncPharmacyForMedicines(medicines, patientId, soldAtDateStr) {
     if (!medicines?.length) return;
     for (const m of medicines) {
       if (m.ml) {
@@ -96,9 +95,13 @@ export default function App() {
   async function handleRecordPayment(patient,amountToApply,mode){const d=new Date(),nowStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;let remaining=amountToApply;const visits=[...(patient.visits||[])].sort((a,b)=>a.ts-b.ts).map(v=>{if(remaining<=0)return v;const due=Math.max(0,(v.cost||0)-(v.paid_amount??v.cost??0));if(due<=0)return v;const apply=Math.min(due,remaining);remaining-=apply;return {...v,paid_amount:(v.paid_amount??v.cost??0)+apply,payment_log:[...(v.payment_log||[]),{date:nowStr,amount:apply,mode:mode||"cash"}]};});const {error}=await supabase.from("patients").update({visits}).eq("id",patient.id);if(!error)setPatients(p=>p.map(x=>x.id===patient.id?{...x,visits}:x));}
   async function handleMarkLost(){const nowIso=new Date().toISOString(),{error}=await supabase.from("patients").update({status:"lost",lost_at:nowIso}).eq("id",selected.id);if(!error){const u={...selected,status:"lost",lost_at:nowIso};setSelected(u);setPatients(p=>p.map(x=>x.id===u.id?u:x));}}
   async function handleReactivate(){const {error}=await supabase.from("patients").update({status:"open",lost_at:null}).eq("id",selected.id);if(!error){const u={...selected,status:"open",lost_at:null};setSelected(u);setPatients(p=>p.map(x=>x.id===u.id?u:x));}}
-  function goToPatientFromFollowUp(p){setTab("patients");setSelected(p);}
-
-  if(!unlocked)return <PinLock onUnlock={()=>setUnlocked(true)}/>;
+  
+  function goToPatientFromFollowUp(p){
+    setReturnTab(tab); // <-- FIX: Taps pe tab memory me save ho jayega
+    setTab("patients");
+    setSelected(p);
+            }
+    if(!unlocked)return <PinLock onUnlock={()=>setUnlocked(true)}/>;
   const overdueCount=patients.filter(p=>{if(p.status!=="open")return false;const v=[...(p.visits||[])].sort((a,b)=>b.ts-a.ts)[0];if(!v?.duration_days)return false;return Date.now()>=v.ts+Number(v.duration_days)*86400000}).length;
   const MORE_ITEMS=[
     {key:"followup",label:"Follow-up",icon:Calendar,color:"#F59E0B",badge:overdueCount},
@@ -116,22 +119,32 @@ export default function App() {
       <div className="flex items-center justify-between mb-5"><button onClick={()=>setShowAbout(true)} className="flex items-center gap-2.5"><div className="w-10 h-10 rounded-full flex items-center justify-center" style={{background:"linear-gradient(135deg,#148A7A,#0A5C54)"}}><Leaf size={18} color="white"/></div><div className="text-left"><h1 className="text-lg font-bold font-serif leading-tight" style={{color:TEAL}}>HomeoCure</h1><p className="text-[10px] italic -mt-0.5" style={{color:TEAL2}}>We serve, He cures</p></div></button><button onClick={()=>{sessionStorage.removeItem("homeocure-unlocked");setUnlocked(false)}} className="w-9 h-9 rounded-full flex items-center justify-center bg-white/70 shadow-sm" style={{color:TEAL}}><LogOut size={16}/></button></div>
       {tab==="today"&&<TodayView patients={patients} onSelect={goToPatientFromFollowUp} onNavigate={setTab}/>} 
       {tab==="intelligence"&&<IntelligenceView onBack={()=>setTab("today")}/>} 
-      {tab==="patients"&&(selected?<PatientDetail patient={selected} onBack={()=>setSelected(null)} onAddVisit={handleAddVisit} onEditVisit={handleEditVisit} onToggleStatus={handleToggleStatus} onMarkLost={handleMarkLost} onReactivate={handleReactivate}/>:loadingPatients?<p className="text-sm text-center py-10" style={{color:"#0A5C5499"}}>Loading patients…</p>:<PatientList patients={patients} onSelect={setSelected} onAddNew={()=>setShowAdd(true)} onEdit={handleEditPatient} onDelete={handleDeletePatient}/>) }
+      
+      {/* BACK FIX IS HERE 👇 */}
+      {tab==="patients"&&(selected?<PatientDetail patient={selected} onBack={()=>{
+          setSelected(null);
+          if(returnTab){
+            setTab(returnTab);
+            setReturnTab(null);
+          }
+        }} onAddVisit={handleAddVisit} onEditVisit={handleEditVisit} onToggleStatus={handleToggleStatus} onMarkLost={handleMarkLost} onReactivate={handleReactivate}/>:loadingPatients?<p className="text-sm text-center py-10" style={{color:"#0A5C5499"}}>Loading patients…</p>:<PatientList patients={patients} onSelect={setSelected} onAddNew={()=>setShowAdd(true)} onEdit={handleEditPatient} onDelete={handleDeletePatient}/>) }
+      
       {tab==="followup"&&<FollowUpView patients={patients} onSelect={goToPatientFromFollowUp}/>} 
       {tab==="pharmacy"&&<PharmacyView/>}
       {tab==="reports"&&<ReportsView patients={patients} onRecordPayment={handleRecordPayment}/>} 
       {tab==="packages"&&<PackagesView/>}
       {tab==="mr"&&<MRView/>}
       {tab==="analytics"&&<AnalyticsView/>}
-      {/* Yahi wo line hai jisme fix add kiya gaya hai 👇 */}
       {tab==="patientAnalytics"&&<PatientsAnalyticsView patients={patients} onSelect={goToPatientFromFollowUp}/>} 
       {tab==="income"&&(incomeUnlocked?<IncomeView patients={patients}/>:<div className="-mx-4 -mt-2"><PinLock pin={INCOME_PIN} storageKey="homeocure-income-unlocked" title="Income" subtitle="Enter Income PIN to continue" icon={<Lock size={30} color="white"/>} onUnlock={()=>setIncomeUnlocked(true)} fullScreen={false}/></div>)}
     </div>
 
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t z-40" style={{borderColor:"#14B8A633",paddingBottom:"env(safe-area-inset-bottom,0px)"}}><div className="max-w-sm mx-auto grid grid-cols-5">{[{key:"today",label:"Today",icon:Home},{key:"patients",label:"Patients",icon:Users},{key:"pharmacy",label:"Pharmacy",icon:Package},{key:"reports",label:"Reports",icon:ClipboardList}].map(item=>{const Icon=item.icon,active=tab===item.key;return <button key={item.key} onClick={()=>{setTab(item.key);if(item.key==="patients")setSelected(null);setShowMore(false)}} className="flex flex-col items-center justify-center gap-0.5 py-2.5"><Icon size={20} color={active?TEAL2:"#0A5C5488"} strokeWidth={active?2.4:2}/><span className="text-[10px] font-medium" style={{color:active?TEAL2:"#0A5C5488"}}>{item.label}</span></button>})}<button onClick={()=>setShowMore(true)} className="flex flex-col items-center justify-center gap-0.5 py-2.5 relative"><LayoutGrid size={20} color={moreActive||showMore?TEAL2:"#0A5C5488"} strokeWidth={moreActive||showMore?2.4:2}/><span className="text-[10px] font-medium" style={{color:moreActive||showMore?TEAL2:"#0A5C5488"}}>More</span>{overdueCount>0&&<span className="absolute top-1 right-6 w-4 h-4 rounded-full text-[9px] flex items-center justify-center text-white font-bold" style={{background:RED}}>{overdueCount}</span>}</button></div></div>
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t z-40" style={{borderColor:"#14B8A633",paddingBottom:"env(safe-area-inset-bottom,0px)"}}><div className="max-w-sm mx-auto grid grid-cols-5">{[{key:"today",label:"Today",icon:Home},{key:"patients",label:"Patients",icon:Users},{key:"pharmacy",label:"Pharmacy",icon:Package},{key:"reports",label:"Reports",icon:ClipboardList}].map(item=>{const Icon=item.icon,active=tab===item.key;return <button key={item.key} onClick={()=>{setTab(item.key);if(item.key==="patients"){setSelected(null);setReturnTab(null);}setShowMore(false)}} className="flex flex-col items-center justify-center gap-0.5 py-2.5"><Icon size={20} color={active?TEAL2:"#0A5C5488"} strokeWidth={active?2.4:2}/><span className="text-[10px] font-medium" style={{color:active?TEAL2:"#0A5C5488"}}>{item.label}</span></button>})}<button onClick={()=>setShowMore(true)} className="flex flex-col items-center justify-center gap-0.5 py-2.5 relative"><LayoutGrid size={20} color={moreActive||showMore?TEAL2:"#0A5C5488"} strokeWidth={moreActive||showMore?2.4:2}/><span className="text-[10px] font-medium" style={{color:moreActive||showMore?TEAL2:"#0A5C5488"}}>More</span>{overdueCount>0&&<span className="absolute top-1 right-6 w-4 h-4 rounded-full text-[9px] flex items-center justify-center text-white font-bold" style={{background:RED}}>{overdueCount}</span>}</button></div></div>
 
     {showMore&&<div className="fixed inset-0 bg-black/30 z-50 flex items-end" onClick={()=>setShowMore(false)}><div className="bg-white rounded-t-3xl w-full max-w-sm mx-auto p-6 pb-8" onClick={e=>e.stopPropagation()}><div className="flex items-center justify-between mb-5"><h3 className="text-lg font-bold font-serif" style={{color:TEAL}}>More</h3><button onClick={()=>setShowMore(false)} style={{color:TEAL}}><X size={20}/></button></div><div className="grid grid-cols-3 gap-3">{MORE_ITEMS.map(item=>{const Icon=item.icon;return <button key={item.key} onClick={()=>{setTab(item.key);setShowMore(false)}} className="flex flex-col items-center gap-2 relative"><div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{background:`${item.color}1A`}}><Icon size={24} color={item.color}/></div><span className="text-xs font-medium text-center" style={{color:TEAL}}>{item.label}</span>{item.badge>0&&<span className="absolute -top-1 right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center text-white font-bold" style={{background:RED}}>{item.badge}</span>}</button>})}</div></div></div>}
     {showAdd&&<AddPatient onClose={()=>setShowAdd(false)} onSave={handleAddPatient} patients={patients} onViewExisting={p=>{setShowAdd(false);setTab("patients");setSelected(p)}}/>}
     {showAbout&&<AboutModal onClose={()=>setShowAbout(false)}/>} 
   </div>;
 }
+
+  
