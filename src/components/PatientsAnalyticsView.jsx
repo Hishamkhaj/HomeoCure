@@ -136,7 +136,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
       revenue: totalRevenue, closedThisMonth: getUnique(closedThisMonth), lostThisMonth: getUnique(lostThisMonth), overdueThisMonth: getUnique(overdueThisMonth)
     };
   }, [patients, currentViewDate, nowMs]);
-        const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
+    const { categoryStats, topCategory, bottomCategory } = useMemo(() => {
     const map = {};
     patients.forEach(p => {
       if (!p.visits?.length) return;
@@ -251,7 +251,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
               </div>
             </div>
             
-            {/* INLINE LIST VIEWER - Properly Clickable FIX */}
+            {/* INLINE LIST VIEWER - BUG FIXED */}
             {expandedList && (
               <div className="bg-gray-50 border-t" style={{ borderColor: "#14B8A633" }}>
                 <div className="p-3 bg-gray-100 flex items-center justify-between">
@@ -262,8 +262,9 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                   {expandedList.data.map(pt => (
                     <button 
                       key={pt.id} 
-                      onClick={() => onSelect?.(pt)} 
-                      className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:scale-[0.98] transition-transform"
+                      type="button"
+                      onClick={() => { if(onSelect) onSelect(pt); }} 
+                      className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm outline-none active:bg-teal-50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
@@ -325,14 +326,15 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
                 <span style={{ color: "#DC2626" }}>{cat.lost} Lost</span>
               </div>
               
-              {/* Clickable Disease Patient List FIX */}
+              {/* Clickable Disease Patient List BUG FIXED */}
               {expandedCategory === cat.name && (
                 <div className="mt-3 pt-3 border-t border-dashed space-y-2 max-h-48 overflow-y-auto" style={{ borderColor: "#14B8A633" }}>
                   {cat.patientList.map(pt => (
                     <button 
                       key={pt.id} 
-                      onClick={() => onSelect?.(pt)} 
-                      className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:scale-[0.98] transition-transform"
+                      type="button"
+                      onClick={() => { if(onSelect) onSelect(pt); }} 
+                      className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 outline-none active:bg-teal-50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-gray-800 truncate">{pt.name}</p>
@@ -348,7 +350,7 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
         </div>
       )}
 
-      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) Clickable FIX ---------------- */}
+      {/* ---------------- TAB 3: ACTION DESK (OVERDUE) BUG FIXED ---------------- */}
       {activeTab === "action" && (
         <div className="space-y-3">
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex items-start gap-2 mb-2">
@@ -358,8 +360,9 @@ export default function PatientsAnalyticsView({ patients = [], onSelect }) {
           {actionList.map(({ patient, dueInfo }) => (
             <button 
               key={patient.id} 
-              onClick={() => onSelect?.(patient)} 
-              className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:scale-[0.98] transition-transform" 
+              type="button"
+              onClick={() => { if(onSelect) onSelect(patient); }} 
+              className="w-full text-left bg-white rounded-xl p-3.5 shadow-sm border flex items-center justify-between outline-none active:bg-teal-50 transition-colors" 
               style={{ borderColor: "#14B8A61A" }}
             >
               <div className="min-w-0">
@@ -424,4 +427,4 @@ function StatDetail({ label, value, color, help, onClick, isActive }) {
       {help && <p className="text-[9px] text-gray-400 mt-0.5">{help}</p>}
     </button>
   );
-      }
+}
