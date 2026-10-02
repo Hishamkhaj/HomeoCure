@@ -9,10 +9,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    // AI की परमानेंट ट्रेनिंग (System Instruction)
-    const systemInstruction = `तुम डॉ. हिशाम खान के क्लिनिक 'Apna Homeo Hall' (HomeoCure) के स्मार्ट AI असिस्टेंट हो। तुम्हारा काम बहुत ही कम शब्दों में, सटीक और इज़्ज़त के साथ हिंदी (Hinglish) में जवाब देना है। तुम एक प्रोफेशनल क्लिनिक मैनेजर की तरह बर्ताव करोगे।`;
+    const systemInstruction = `तुम डॉ. हिशाम खान के क्लिनिक 'Apna Homeo Hall' के स्मार्ट AI असिस्टेंट हो। बहुत ही कम शब्दों में, सटीक और इज़्ज़त के साथ Hinglish में जवाब देना।`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+    // Google के बताए गए ऑफिशियल 3.8-flash मॉडल का इस्तेमाल
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
