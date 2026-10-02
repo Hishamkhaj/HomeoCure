@@ -212,13 +212,15 @@ export default function ReportsView({ patients, onRecordPayment }) {
   async function handleRefill(product) {
     setRefilling(product.id);
     const full = product.bottle_size_ml || 0;
+    const beforeRefill = product.remaining_ml || 0;
+    const actuallyAdded = Math.max(0, full - beforeRefill);
     const { error } = await supabase.from("pharmacy_products").update({ remaining_ml: full }).eq("id", product.id);
     if (!error) {
       let updated = pharmacyProducts.map((p) => (p.id === product.id ? { ...p, remaining_ml: full } : p));
       if (product.source_product_id) {
         const source = pharmacyProducts.find((p) => p.id === product.source_product_id);
         if (source) {
-          const newSourceRemaining = Math.max(0, (source.remaining_ml || 0) - full);
+          const newSourceRemaining = Math.max(0, (source.remaining_ml || 0) - actuallyAdded);
           await supabase.from("pharmacy_products").update({ remaining_ml: newSourceRemaining }).eq("id", source.id);
           updated = updated.map((p) => (p.id === source.id ? { ...p, remaining_ml: newSourceRemaining } : p));
         }
