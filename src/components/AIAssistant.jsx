@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, X, Send, Bot } from "lucide-react";
 
 const TEAL = "#0A5C54";
-const TEAL2 = "#148A7A";
 
 export default function AIAssistant() {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,7 +10,7 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "Hello Dr. Hisham! ✨ मैं आपका HomeoCure AI असिस्टेंट हूँ। आज मैं क्लिनिक और फार्मेसी में आपकी क्या मदद कर सकता हूँ?",
+      text: "Hello Dr. Hisham! ✨ मैं आपका HomeoCure AI असिस्टेंट हूँ। मेरा दिमाग अब काम कर रहा है, आप मुझसे कुछ भी पूछ सकते हैं!",
     },
   ]);
   
@@ -23,7 +22,7 @@ export default function AIAssistant() {
     }
   }, [messages, isTyping]);
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
@@ -32,18 +31,31 @@ export default function AIAssistant() {
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      setIsTyping(false);
+    try {
+      // Step 1 में बनाई गई API को मैसेज भेजना
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+      });
+      
+      const data = await res.json();
+      
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          text: `मैंने आपकी कमांड: "${userText}" नोट कर ली है। बैकएंड (API) जुड़ने के बाद मैं इस एक्शन को सीधे आपके डेटाबेस में प्रोसेस कर दूंगा! 🚀`,
-        },
+        { role: "assistant", text: data.reply || "माफ़ करना, मुझे कुछ समझ नहीं आया।" }
       ]);
-    }, 1500);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "कनेक्शन में कोई दिक्कत आ गई है। कृपया फिर से कोशिश करें।" }
+      ]);
+    } finally {
+      setIsTyping(false);
+    }
   };
-    return (
+
+  return (
     <>
       {!isOpen && (
         <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform duration-300 hover:scale-105" style={{ background: "linear-gradient(135deg, #148A7A, #0A5C54)" }}>
@@ -87,16 +99,15 @@ export default function AIAssistant() {
 
             <div className="p-3 bg-white border-t border-teal-50">
               <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 border rounded-full px-2 py-1.5 transition-all" style={{ borderColor: "#14B8A644" }}>
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask AI to do something..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." className="flex-1 bg-transparent px-3 py-2 text-sm outline-none" style={{ color: TEAL }}/>
                 <button type="submit" disabled={!input.trim() || isTyping} className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 transition-colors" style={{ background: input.trim() ? TEAL : "#14B8A622", color: input.trim() ? "white" : TEAL }}>
                   <Send size={16} className={input.trim() ? "ml-0.5" : ""} />
                 </button>
               </form>
-              <p className="text-[9px] text-center mt-2 opacity-60" style={{ color: TEAL }}>HomeoCure AI is currently in beta.</p>
             </div>
           </div>
         </div>
       )}
     </>
   );
-                                                                                                           }
+                                                  }
