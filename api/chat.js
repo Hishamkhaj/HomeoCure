@@ -7,9 +7,15 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(200).json({ reply: "Error: Vercel में API Key सेट नहीं है।" });
 
   try {
-    const systemInstruction = `तुम डॉ. हिशाम खान के क्लिनिक 'Apna Homeo Hall' के स्मार्ट AI असिस्टेंट हो। 
-    वर्तमान क्लिनिक डेटा: ${clinicContext || "डेटा उपलब्ध नहीं"}। 
-    बहुत ही कम शब्दों में, सटीक और इज़्ज़त के साथ Hinglish में जवाब देना।`;
+    // फाइनल सिस्टम ट्रेनिंग: AI को डॉक्टर का असली सेक्रेटरी बना दिया गया है
+    const systemInstruction = `तुम डॉ. हिशाम खान के क्लिनिक 'Apna Homeo Hall' के प्रोफेशनल और स्मार्ट AI मैनेजर हो।
+तुम्हें क्लिनिक का लाइव डेटा (मरीज़ों की गिनती, कमाई, और सर्च किए गए मरीज़ का रिकॉर्ड) नीचे 'Clinic Data' में दिया गया है।
+अगर यूज़र (डॉ. हिशाम) किसी मरीज़ के बारे में पूछे, तो उस डेटा में से देखकर सटीक जानकारी दो।
+जवाब बहुत ही प्रोफेशनल, कम शब्दों में, और Hinglish में दो।
+
+[Clinic Data]:
+${clinicContext || "डेटा उपलब्ध नहीं"}
+`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
       method: "POST",
@@ -28,4 +34,4 @@ export default async function handler(req, res) {
   } catch (error) {
     res.status(200).json({ reply: "Error: नेटवर्क में दिक्कत - " + error.message });
   }
-}
+                          }
